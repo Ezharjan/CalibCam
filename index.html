@@ -1,0 +1,912 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>html,body{margin:0;height:100%;background:#111315;color:#e4e7ea;font-family:'IBM Plex Sans',system-ui,sans-serif;overflow:hidden}a{color:oklch(0.82 0.14 75)}a:hover{color:oklch(0.9 0.1 75)}input[type=range]{accent-color:oklch(0.82 0.14 75)}button{font-family:inherit}::-webkit-scrollbar{width:8px;height:8px}::-webkit-scrollbar-thumb{background:#2b3036;border-radius:4px}::-webkit-scrollbar-track{background:transparent}</style>
+<script src="./calib.js"></script>
+</helmet>
+<div style="height:100vh; display:flex; flex-direction:column; font-size:13px; color:#e4e7ea; background:#111315">
+  <div style="height:48px; flex:none; display:flex; align-items:center; gap:16px; padding:0 14px 0 16px; border-bottom:1px solid #23282d; background:#14171a">
+    <div style="display:flex; align-items:center; gap:10px">
+      <div style="width:14px; height:14px; border:2px solid oklch(0.82 0.14 75); border-radius:50%"></div>
+      <span style="font-weight:600; font-size:14px; letter-spacing:0.01em">Calib</span>
+      <span style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#7d858e">manual camera calibration · pinhole + radtan5 (OpenCV)</span>
+    </div>
+    <div style="flex:1"></div>
+    <div style="display:flex; align-items:center; gap:2px; padding:2px; background:#1b1f23; border:1px solid #2a2f35; border-radius:5px">
+      <button onClick="{{ setLayA }}" style="height:24px; padding:0 10px; border:0; border-radius:3px; font-size:11.5px; cursor:pointer; background:{{ layABg }}; color:{{ layAFg }}">A · Workbench</button>
+      <button onClick="{{ setLayB }}" style="height:24px; padding:0 10px; border:0; border-radius:3px; font-size:11.5px; cursor:pointer; background:{{ layBBg }}; color:{{ layBFg }}">B · Guided</button>
+    </div>
+    <button onClick="{{ exportJson }}" style="height:30px; padding:0 14px; border-radius:4px; border:0; background:oklch(0.82 0.14 75); color:#1b1408; font-weight:600; font-size:12px; cursor:pointer">Export JSON</button>
+  </div>
+
+  <sc-if value="{{ layoutB }}" hint-placeholder-val="{{ false }}">
+    <div style="height:52px; flex:none; display:flex; align-items:stretch; border-bottom:1px solid #23282d; background:#131619; padding:0 8px; gap:2px; overflow-x:auto">
+      <sc-for list="{{ tools }}" as="s" hint-placeholder-count="6">
+        <button onClick="{{ s.onClick }}" style="flex:1; min-width:120px; display:flex; align-items:center; gap:10px; padding:0 12px; border:0; background:transparent; cursor:pointer; border-bottom:2px solid {{ s.bar }}; color:{{ s.fg }}; text-align:left">
+          <span style="width:22px; height:22px; flex:none; border-radius:50%; display:flex; align-items:center; justify-content:center; font-family:'IBM Plex Mono',monospace; font-size:11px; background:{{ s.dotBg }}; color:{{ s.dotFg }}">{{ s.mark }}</span>
+          <span style="display:flex; flex-direction:column; gap:1px; min-width:0">
+            <span style="font-size:12.5px; font-weight:500; white-space:nowrap">{{ s.label }}</span>
+            <span style="font-size:10.5px; color:#6f7780; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">{{ s.sub }}</span>
+          </span>
+        </button>
+      </sc-for>
+    </div>
+  </sc-if>
+
+  <div style="flex:1; min-height:0; display:flex">
+    <sc-if value="{{ layoutA }}" hint-placeholder-val="{{ true }}">
+      <div style="width:184px; flex:none; border-right:1px solid #23282d; background:#14171a; display:flex; flex-direction:column; padding:10px 8px; gap:2px">
+        <div style="font-size:10.5px; letter-spacing:0.08em; text-transform:uppercase; color:#6a727b; padding:6px 8px 8px">Tools</div>
+        <sc-for list="{{ tools }}" as="s" hint-placeholder-count="6">
+          <button onClick="{{ s.onClick }}" style="display:flex; align-items:center; gap:10px; padding:8px; border:0; border-radius:4px; cursor:pointer; text-align:left; background:{{ s.bg }}; color:{{ s.fg }}">
+            <span style="width:20px; height:20px; flex:none; border-radius:4px; display:flex; align-items:center; justify-content:center; font-family:'IBM Plex Mono',monospace; font-size:10.5px; background:{{ s.dotBg }}; color:{{ s.dotFg }}">{{ s.mark }}</span>
+            <span style="display:flex; flex-direction:column; gap:1px; min-width:0">
+              <span style="font-size:12.5px; font-weight:500">{{ s.label }}</span>
+              <span style="font-size:10.5px; color:#6f7780">{{ s.sub }}</span>
+            </span>
+          </button>
+        </sc-for>
+        <div style="flex:1"></div>
+        <div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; line-height:1.7; color:#5f676f; padding:8px">
+          <div>wheel · zoom</div><div>right-drag · pan</div><div>⌫ · delete</div><div>←↑→↓ · nudge 0.1px</div><div>⏎ · finish line</div><div>⌘Z · undo</div><div>F · fit</div>
+        </div>
+      </div>
+    </sc-if>
+
+    <div ref="{{ wrapRef }}" style="flex:1; min-width:0; position:relative; background:#0b0d0f; overflow:hidden">
+      <canvas ref="{{ canvasRef }}" style="position:absolute; inset:0; width:100%; height:100%; display:block; cursor:crosshair"></canvas>
+      <sc-if value="{{ hasImage }}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute; top:10px; left:10px; display:flex; gap:4px; flex-wrap:wrap; max-width:calc(100% - 20px)">
+          <sc-for list="{{ toggles }}" as="g" hint-placeholder-count="5">
+            <button onClick="{{ g.onClick }}" style="height:26px; white-space:nowrap; flex:none; padding:0 10px; border-radius:4px; font-size:11.5px; cursor:pointer; border:1px solid {{ g.bd }}; background:{{ g.bg }}; color:{{ g.fg }}">{{ g.label }}</button>
+          </sc-for>
+        </div>
+      </sc-if>
+      <sc-if value="{{ noImage }}" hint-placeholder-val="{{ true }}">
+        <div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; padding:24px">
+          <div style="max-width:440px; width:100%; border:1px dashed #333a41; border-radius:8px; padding:28px; display:flex; flex-direction:column; gap:16px; align-items:flex-start; background:#0f1113">
+            <div style="font-size:18px; font-weight:600">Load a webcam URL, or drop an image / video</div>
+            <div style="color:#8f979f; line-height:1.55; text-wrap:pretty">Annotate edges, vanishing lines and known points by hand. Every estimate is classical geometry — DLT, homographies, Levenberg–Marquardt — with residuals and uncertainties shown.</div>
+            <div style="display:flex; gap:6px; width:100%">
+              <input value="{{ urlInput }}" onChange="{{ onUrlInput }}" onKeyDown="{{ onUrlKey }}" placeholder="Paste a webcam / image URL" style="flex:1; min-width:0; height:34px; box-sizing:border-box; padding:0 10px; border:1px solid #353c43; border-radius:4px; background:#111315; color:#e4e7ea; font-family:'IBM Plex Mono',monospace; font-size:12px">
+              <button onClick="{{ loadSingleUrl }}" style="height:34px; padding:0 16px; border-radius:4px; border:0; background:oklch(0.82 0.14 75); color:#1b1408; font-weight:600; font-size:12px; cursor:pointer">Load URL</button>
+            </div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap">
+              <button onClick="{{ openFile }}" style="height:32px; padding:0 14px; white-space:nowrap; border-radius:4px; border:1px solid #323840; background:#1f2327; color:#d9dde1; font-size:12px; cursor:pointer">Open file</button>
+              <button onClick="{{ startWebcam }}" style="height:32px; padding:0 14px; white-space:nowrap; border-radius:4px; border:1px solid #323840; background:#1f2327; color:#d9dde1; font-size:12px; cursor:pointer">Webcam</button>
+              <button onClick="{{ loadSynthetic }}" style="height:32px; padding:0 14px; white-space:nowrap; border-radius:4px; border:1px solid #323840; background:#1f2327; color:#d9dde1; font-size:12px; cursor:pointer">Synthetic test scene</button>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+      <sc-if value="{{ isVideo }}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute; left:10px; right:10px; bottom:10px; display:flex; align-items:center; gap:10px; padding:8px 12px; background:rgba(18,20,23,0.92); border:1px solid #2a2f35; border-radius:6px">
+          <button onClick="{{ frameBack }}" style="height:26px; padding:0 8px; border-radius:4px; border:1px solid #323840; background:#1f2327; color:#d9dde1; font-size:11.5px; cursor:pointer">−1/30 s</button>
+          <input type="range" min="0" max="{{ vdur }}" step="0.001" value="{{ vt }}" onChange="{{ onScrub }}" style="flex:1; min-width:0">
+          <button onClick="{{ frameFwd }}" style="height:26px; padding:0 8px; border-radius:4px; border:1px solid #323840; background:#1f2327; color:#d9dde1; font-size:11.5px; cursor:pointer">+1/30 s</button>
+          <span style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#aeb5bd; min-width:120px; text-align:right">{{ videoTimeStr }}</span>
+        </div>
+      </sc-if>
+      <sc-if value="{{ isWebcam }}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute; left:50%; bottom:14px; transform:translateX(-50%); display:flex; gap:8px; padding:8px; background:rgba(18,20,23,0.92); border:1px solid #2a2f35; border-radius:6px">
+          <sc-if value="{{ isLive }}"><button onClick="{{ captureFrame }}" style="height:30px; padding:0 14px; border-radius:4px; border:0; background:oklch(0.82 0.14 75); color:#1b1408; font-weight:600; font-size:12px; cursor:pointer">Capture frame</button></sc-if>
+          <sc-if value="{{ isFrozen }}"><button onClick="{{ resumeLive }}" style="height:30px; padding:0 14px; border-radius:4px; border:1px solid #323840; background:#1f2327; color:#d9dde1; font-size:12px; cursor:pointer">Resume live (keep annotations)</button></sc-if>
+        </div>
+      </sc-if>
+      <sc-if value="{{ isUrl }}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute; left:50%; bottom:14px; transform:translateX(-50%); display:flex; gap:8px; padding:8px; background:rgba(18,20,23,0.92); border:1px solid #2a2f35; border-radius:6px">
+          <button onClick="{{ refreshCam }}" style="height:30px; padding:0 14px; white-space:nowrap; border-radius:4px; border:1px solid #323840; background:#1f2327; color:#d9dde1; font-size:12px; cursor:pointer">Fetch latest frame (keep annotations)</button>
+        </div>
+      </sc-if>
+      <sc-if value="{{ busy }}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(11,13,15,0.7)">
+          <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#d9dde1; padding:10px 14px; border:1px solid #2a2f35; border-radius:5px; background:#15181b">{{ busyText }}</div>
+        </div>
+      </sc-if>
+      <sc-if value="{{ hasToast }}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute; top:46px; left:10px; max-width:420px; font-size:12px; line-height:1.45; color:#ffd9d3; padding:8px 12px; border:1px solid #5a2e2a; border-radius:5px; background:#231614">{{ toast }}</div>
+      </sc-if>
+    </div>
+
+    <div style="width:388px; flex:none; border-left:1px solid #23282d; background:#15181b; display:flex; flex-direction:column; min-height:0">
+      <div style="flex:1; min-height:0; overflow-y:auto; overflow-x:hidden">
+        <sc-if value="{{ layoutB }}" hint-placeholder-val="{{ false }}">
+          <div style="padding:14px 18px 0; font-family:'IBM Plex Mono',monospace; font-size:11px; color:oklch(0.82 0.14 75)">STEP {{ stepNum }} / 6</div>
+        </sc-if>
+
+        <sc-if value="{{ tSource }}" hint-placeholder-val="{{ true }}">
+          <div style="padding:14px 18px 20px; display:flex; flex-direction:column; gap:14px">
+            <div style="font-size:16px; font-weight:600">Source</div>
+            <div style="color:#9aa2ab; line-height:1.55; text-wrap:pretty">Calibrate from a single frame — a webcam snapshot URL, an image or video file, or your own camera. Refreshing a URL, scrubbing video or recapturing keeps your annotations, so a fixed camera can be re-checked frame by frame.</div>
+            <div style="display:flex; flex-direction:column; gap:8px; padding:12px; border:1px solid #2c3238; border-radius:6px; background:#1a1d21">
+              <div style="font-size:10.5px; letter-spacing:0.08em; text-transform:uppercase; color:#8a929b">Webcam / image URL</div>
+              <div style="display:flex; gap:6px">
+                <input value="{{ urlInput }}" onChange="{{ onUrlInput }}" onKeyDown="{{ onUrlKey }}" placeholder="https://example.com/cam/latest.jpg" style="flex:1; min-width:0; height:32px; box-sizing:border-box; padding:0 10px; border:1px solid #353c43; border-radius:4px; background:#111315; color:#e4e7ea; font-family:'IBM Plex Mono',monospace; font-size:11.5px">
+                <button onClick="{{ loadSingleUrl }}" style="height:32px; padding:0 14px; white-space:nowrap; border-radius:4px; border:0; background:oklch(0.82 0.14 75); color:#1b1408; font-weight:600; font-size:12px; cursor:pointer">Load</button>
+              </div>
+              <div style="font-size:11px; line-height:1.5; color:#6f7780; text-wrap:pretty">Any still-image (JPEG/PNG) snapshot URL. “Fetch latest frame” re-downloads it and keeps your annotations.</div>
+              <sc-if value="{{ hasRecent }}">
+                <div style="display:flex; flex-direction:column; gap:2px">
+                  <span style="font-size:10.5px; color:#6a727b">recent</span>
+                  <sc-for list="{{ recentRows }}" as="r" hint-placeholder-count="0"><button onClick="{{ r.onClick }}" style="text-align:left; padding:3px 0; border:0; background:transparent; color:#aeb5bd; font-family:'IBM Plex Mono',monospace; font-size:10.5px; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">{{ r.label }}</button></sc-for>
+                </div>
+              </sc-if>
+              <button onClick="{{ toggleProxy }}" style="align-self:flex-start; height:26px; padding:0 8px; border-radius:4px; font-size:11.5px; cursor:pointer; display:flex; align-items:center; gap:8px; white-space:nowrap; border:1px solid #323840; background:#15181b; color:#d9dde1"><span style="width:10px; height:10px; border-radius:2px; border:1px solid #6d757e; background:{{ proxyBg }}"></span>Fallback via image proxy</button>
+              <sc-if value="{{ proxyOn }}"><input value="{{ proxyTpl }}" onChange="{{ setProxyTpl }}" placeholder="https://images.weserv.nl/?url={url}" style="height:26px; box-sizing:border-box; padding:0 8px; border:1px solid #2c3238; border-radius:4px; background:#111315; color:#e4e7ea; font-family:'IBM Plex Mono',monospace; font-size:10.5px"></sc-if>
+              <div style="font-size:11px; line-height:1.5; color:#6f7780; text-wrap:pretty">Most camera servers block pixel access from other sites; the proxy fetches the image for you and therefore sees the URL. <span style="font-family:'IBM Plex Mono',monospace">{url}</span> = encoded camera URL; leave blank for the public default or use your own proxy.</div>
+              <button onClick="{{ importCams }}" style="align-self:flex-start; padding:0; border:0; background:transparent; color:oklch(0.82 0.14 75); font-size:11.5px; cursor:pointer; text-decoration:underline; text-underline-offset:3px">Annotating many cameras? Import a URL list (CSV)…</button>
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px">
+              <button onClick="{{ openFile }}" style="height:32px; border-radius:4px; border:1px solid #323840; background:#1f2327; color:#d9dde1; font-size:12px; cursor:pointer">Open image / video</button>
+              <button onClick="{{ startWebcam }}" style="height:32px; border-radius:4px; border:1px solid #323840; background:#1f2327; color:#d9dde1; font-size:12px; cursor:pointer">Webcam</button>
+              <button onClick="{{ loadSynthetic }}" style="grid-column:1 / -1; height:32px; border-radius:4px; border:1px solid #323840; background:#1f2327; color:#d9dde1; font-size:12px; cursor:pointer">Synthetic test scene · known ground truth</button>
+              <button onClick="{{ openFile }}" style="grid-column:1 / -1; height:32px; border-radius:4px; border:1px solid #323840; background:#1f2327; color:#d9dde1; font-size:12px; cursor:pointer">Import calibration JSON</button>
+            </div>
+            <sc-if value="{{ hasCams }}">
+              <div style="display:flex; flex-direction:column; gap:8px; border-top:1px solid #23282d; padding-top:14px">
+                <div style="display:flex; justify-content:space-between; align-items:baseline"><span style="font-size:10.5px; letter-spacing:0.08em; text-transform:uppercase; color:#6a727b">Imported URL list</span><span style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:#6d757e">{{ camMore }}</span></div>
+                <input value="{{ camQuery }}" onChange="{{ onCamQuery }}" placeholder="Search {{ camCount }} cameras…" style="height:30px; box-sizing:border-box; padding:0 10px; border:1px solid #2c3238; border-radius:4px; background:#111315; color:#e4e7ea; font-size:12px">
+                <div style="max-height:230px; overflow-y:auto; overflow-x:hidden; border:1px solid #262b31; border-radius:4px">
+                  <sc-for list="{{ camRows }}" as="c" hint-placeholder-count="6">
+                    <button onClick="{{ c.onClick }}" style="width:100%; box-sizing:border-box; display:flex; flex-direction:column; align-items:flex-start; gap:2px; padding:7px 10px; border:0; border-bottom:1px solid #20252a; cursor:pointer; text-align:left; color:#d9dde1; background:{{ c.bg }}">
+                      <span style="font-size:12px">{{ c.name }}</span>
+                      <span style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:#6d757e">{{ c.host }} · {{ c.loc }}</span>
+                    </button>
+                  </sc-for>
+                </div>
+                <div style="font-size:11px; line-height:1.5; color:#6f7780">Click a row to load it. The list stays in this browser and is never uploaded.</div>
+              </div>
+            </sc-if>
+            <sc-if value="{{ hasImage }}">
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:#c3c9cf; background:#1b1f23; border:1px solid #262b31; border-radius:4px; padding:10px 12px; display:grid; grid-template-columns:auto 1fr; gap:5px 14px">
+                <span style="color:#6d757e">source</span><span style="overflow-wrap:anywhere">{{ srcName }}</span>
+                <span style="color:#6d757e">size</span><span>{{ srcSize }}</span>
+                <span style="color:#6d757e">pixels</span><span>centres at integers, (0,0) = top-left</span>
+              </div>
+            </sc-if>
+            <div style="font-size:12px; line-height:1.55; color:#8a929b; border-top:1px solid #23282d; padding-top:12px; text-wrap:pretty">Suggested order: <span style="color:#d9dde1">Lens</span> (distortion from straight edges) → <span style="color:#d9dde1">Vanishing points</span> (f, principal point, rotation) → <span style="color:#d9dde1">Points</span> (joint refinement + translation) → <span style="color:#d9dde1">Verify</span>. Each step updates the shared camera below.</div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ tLens }}" hint-placeholder-val="{{ false }}">
+          <div style="padding:14px 18px 20px; display:flex; flex-direction:column; gap:14px">
+            <div style="font-size:16px; font-weight:600">Lens distortion · plumb lines</div>
+            <div style="color:#9aa2ab; line-height:1.55; text-wrap:pretty">Click points along edges that are straight in the world. <span style="color:#d9dde1">⏎</span> or double-click finishes a line. Long edges near the image border constrain k most strongly.</div>
+            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap">
+              <button onClick="{{ toggleSnap }}" style="height:28px; padding:0 10px; border-radius:4px; font-size:12px; cursor:pointer; display:flex; align-items:center; gap:8px; white-space:nowrap; border:1px solid #323840; background:#1b1f23; color:#d9dde1"><span style="width:10px; height:10px; border-radius:2px; border:1px solid #6d757e; background:{{ snapBg }}"></span>Snap to edges (sub-pixel)</button>
+              <sc-if value="{{ hasActivePoly }}"><button onClick="{{ finishPoly }}" style="height:28px; padding:0 10px; border-radius:4px; border:1px solid #323840; background:#1f2327; color:#d9dde1; font-size:12px; cursor:pointer">Finish line ⏎</button></sc-if>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:6px">
+              <div style="font-size:10.5px; letter-spacing:0.08em; text-transform:uppercase; color:#6a727b">Radial model</div>
+              <div style="display:flex; gap:2px; padding:2px; background:#1b1f23; border:1px solid #2a2f35; border-radius:5px">
+                <sc-for list="{{ lensModels }}" as="m" hint-placeholder-count="3"><button onClick="{{ m.onClick }}" style="flex:1; height:26px; border:0; border-radius:3px; font-family:'IBM Plex Mono',monospace; font-size:11.5px; white-space:nowrap; cursor:pointer; background:{{ m.bg }}; color:{{ m.fg }}">{{ m.label }}</button></sc-for>
+              </div>
+            </div>
+            <div style="display:flex; flex-direction:column; border:1px solid #262b31; border-radius:4px; overflow:hidden">
+              <div style="display:flex; justify-content:space-between; padding:7px 10px; background:#1b1f23; font-size:11px; color:#8a929b"><span>Lines</span><span style="font-family:'IBM Plex Mono',monospace">RMS deviation (current k)</span></div>
+              <sc-for list="{{ lensRows }}" as="row" hint-placeholder-count="0">
+                <div onClick="{{ row.onSel }}" style="display:flex; align-items:center; gap:10px; padding:6px 10px; border-top:1px solid #23282d; font-family:'IBM Plex Mono',monospace; font-size:11.5px; cursor:pointer; background:{{ row.bg }}">
+                  <span style="width:8px; height:8px; border-radius:50%; background:#4fd1d9"></span>
+                  <span style="flex:1">{{ row.label }}</span>
+                  <span style="color:{{ row.devColor }}">{{ row.dev }}</span>
+                  <button onClick="{{ row.onDel }}" style="width:22px; height:22px; border:0; background:transparent; color:#6d757e; cursor:pointer; font-size:14px">×</button>
+                </div>
+              </sc-for>
+              <sc-if value="{{ lensEmpty }}"><div style="padding:10px; border-top:1px solid #23282d; color:#6d757e; font-size:12px">No lines yet.</div></sc-if>
+            </div>
+            <div style="display:flex; gap:8px">
+              <button onClick="{{ solveLens }}" style="flex:1; height:32px; border-radius:4px; border:0; background:oklch(0.82 0.14 75); color:#1b1408; font-weight:600; font-size:12px; cursor:pointer">Solve distortion</button>
+              <button onClick="{{ resetDist }}" style="height:32px; white-space:nowrap; padding:0 12px; border-radius:4px; border:1px solid #323840; background:#1f2327; color:#d9dde1; font-size:12px; cursor:pointer">Zero k</button>
+            </div>
+            <sc-if value="{{ lensErr }}"><div style="font-size:12px; line-height:1.45; color:#ffb4a8">{{ lensErrMsg }}</div></sc-if>
+            <sc-if value="{{ lensHas }}">
+              <div style="display:flex; flex-direction:column; gap:8px; font-family:'IBM Plex Mono',monospace; font-size:12px">
+                <div style="display:flex; justify-content:space-between"><span style="color:#8a929b">straightness RMS</span><span>{{ lensBefore }} → <span style="color:oklch(0.8 0.15 150)">{{ lensAfter }}</span> px</span></div>
+                <sc-for list="{{ lensCoefs }}" as="k" hint-placeholder-count="2"><div style="display:flex; justify-content:space-between"><span style="color:#8a929b">{{ k.name }}</span><span>{{ k.val }} <span style="color:#6d757e">± {{ k.sd }}</span></span></div></sc-for>
+                <sc-for list="{{ lensWarn }}" as="w" hint-placeholder-count="0"><div style="font-family:'IBM Plex Sans',sans-serif; color:oklch(0.82 0.14 75); line-height:1.45">{{ w.t }}</div></sc-for>
+              </div>
+            </sc-if>
+            <div style="font-size:11.5px; line-height:1.55; color:#6f7780; text-wrap:pretty">Distortion centre = principal point. Coefficients are relative to fx; whenever fx changes they are rescaled so the pixel-space distortion stays identical.</div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ tVP }}" hint-placeholder-val="{{ false }}">
+          <div style="padding:14px 18px 20px; display:flex; flex-direction:column; gap:14px">
+            <div style="font-size:16px; font-weight:600">Vanishing points</div>
+            <div style="color:#9aa2ab; line-height:1.55; text-wrap:pretty">Drag along edges parallel to each world axis (or click both ends). Two axes give f and R with a known principal point; three axes also give the principal point.</div>
+            <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:6px">
+              <sc-for list="{{ axes }}" as="a" hint-placeholder-count="3">
+                <button onClick="{{ a.onClick }}" style="height:44px; border-radius:4px; cursor:pointer; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; border:1px solid {{ a.bd }}; background:{{ a.bg }}; color:#e4e7ea">
+                  <span style="font-family:'IBM Plex Mono',monospace; font-size:13px; font-weight:500; color:{{ a.color }}">{{ a.label }}</span>
+                  <span style="font-size:10.5px; color:#8a929b">{{ a.count }}</span>
+                </button>
+              </sc-for>
+            </div>
+            <button onClick="{{ toggleSnap }}" style="align-self:flex-start; height:28px; padding:0 10px; border-radius:4px; font-size:12px; cursor:pointer; display:flex; align-items:center; gap:8px; white-space:nowrap; border:1px solid #323840; background:#1b1f23; color:#d9dde1"><span style="width:10px; height:10px; border-radius:2px; border:1px solid #6d757e; background:{{ snapBg }}"></span>Fit segments to edges (sub-pixel)</button>
+            <div style="display:flex; flex-direction:column; gap:6px">
+              <div style="font-size:10.5px; letter-spacing:0.08em; text-transform:uppercase; color:#6a727b">Principal point</div>
+              <div style="display:flex; gap:2px; padding:2px; background:#1b1f23; border:1px solid #2a2f35; border-radius:5px">
+                <sc-for list="{{ ppModes }}" as="m" hint-placeholder-count="3"><button onClick="{{ m.onClick }}" style="flex:1; height:26px; border:0; border-radius:3px; font-size:11.5px; white-space:nowrap; cursor:pointer; background:{{ m.bg }}; color:{{ m.fg }}">{{ m.label }}</button></sc-for>
+              </div>
+            </div>
+            <div style="display:flex; flex-direction:column; border:1px solid #262b31; border-radius:4px; overflow:hidden">
+              <sc-for list="{{ vpRows }}" as="row" hint-placeholder-count="0">
+                <div onClick="{{ row.onSel }}" style="display:flex; align-items:center; gap:10px; padding:6px 10px; border-bottom:1px solid #23282d; font-family:'IBM Plex Mono',monospace; font-size:11.5px; cursor:pointer; background:{{ row.bg }}">
+                  <span style="width:8px; height:8px; border-radius:50%; background:{{ row.color }}"></span>
+                  <span style="flex:1">{{ row.label }}</span>
+                  <span style="color:#8a929b">{{ row.info }}</span>
+                  <button onClick="{{ row.onDel }}" style="width:22px; height:22px; border:0; background:transparent; color:#6d757e; cursor:pointer; font-size:14px">×</button>
+                </div>
+              </sc-for>
+              <sc-if value="{{ vpEmpty }}"><div style="padding:10px; color:#6d757e; font-size:12px">No lines yet.</div></sc-if>
+            </div>
+            <div style="display:flex; gap:8px">
+              <button onClick="{{ solveVP }}" style="flex:1; height:32px; border-radius:4px; border:0; background:oklch(0.82 0.14 75); color:#1b1408; font-weight:600; font-size:12px; cursor:pointer">Solve f, c, R</button>
+              <button onClick="{{ rotateAxes }}" style="height:32px; white-space:nowrap; padding:0 12px; border-radius:4px; border:1px solid #323840; background:#1f2327; color:#d9dde1; font-size:12px; cursor:pointer">Rotate XY 90°</button>
+            </div>
+            <sc-if value="{{ vpErr }}"><div style="font-size:12px; line-height:1.45; color:#ffb4a8">{{ vpErrMsg }}</div></sc-if>
+            <sc-if value="{{ vpHas }}">
+              <div style="display:flex; flex-direction:column; gap:8px; font-family:'IBM Plex Mono',monospace; font-size:12px">
+                <sc-for list="{{ vpRes }}" as="v" hint-placeholder-count="2"><div style="display:flex; justify-content:space-between; gap:10px"><span style="color:{{ v.color }}">VP {{ v.axis }}</span><span style="text-align:right">{{ v.pos }} <span style="color:#6d757e">· {{ v.rms }}</span></span></div></sc-for>
+                <div style="height:1px; background:#23282d"></div>
+                <div style="display:flex; justify-content:space-between"><span style="color:#8a929b">f</span><span>{{ vpF }} <span style="color:#6d757e">± {{ vpFsd }}</span></span></div>
+                <div style="display:flex; justify-content:space-between"><span style="color:#8a929b">c</span><span>{{ vpC }}</span></div>
+                <div style="font-family:'IBM Plex Sans',sans-serif; font-size:11.5px; color:#6f7780; line-height:1.5">σ from 120 Monte-Carlo trials at {{ vpSigma }} px endpoint noise (estimated from the line residuals). Translation is not observable from VPs: the camera centre is kept; set scale with Points or Verify.</div>
+                <sc-for list="{{ vpWarn }}" as="w" hint-placeholder-count="0"><div style="font-family:'IBM Plex Sans',sans-serif; color:oklch(0.82 0.14 75); line-height:1.45">{{ w.t }}</div></sc-for>
+              </div>
+            </sc-if>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ tPoints }}" hint-placeholder-val="{{ false }}">
+          <div style="padding:14px 18px 20px; display:flex; flex-direction:column; gap:14px">
+            <div style="font-size:16px; font-weight:600">Point correspondences</div>
+            <div style="color:#9aa2ab; line-height:1.55; text-wrap:pretty">Click image features with known world coordinates and type X Y Z (blank Z = 0). ≥ 6 non-coplanar points → DLT; ≥ 4 coplanar → homography. Then everything selected below is refined jointly by Levenberg–Marquardt on reprojection error.</div>
+            <button onClick="{{ toggleSnap }}" style="align-self:flex-start; height:28px; padding:0 10px; border-radius:4px; font-size:12px; cursor:pointer; display:flex; align-items:center; gap:8px; white-space:nowrap; border:1px solid #323840; background:#1b1f23; color:#d9dde1"><span style="width:10px; height:10px; border-radius:2px; border:1px solid #6d757e; background:{{ snapBg }}"></span>Snap to corners (sub-pixel)</button>
+            <div style="border:1px solid #262b31; border-radius:4px; overflow:hidden">
+              <div style="display:grid; grid-template-columns:22px 1fr 46px 46px 46px 44px 18px; gap:4px; padding:6px 8px; background:#1b1f23; font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:#6d757e">
+                <span>#</span><span>u, v (px)</span><span>X</span><span>Y</span><span>Z</span><span style="text-align:right">err</span><span></span>
+              </div>
+              <sc-for list="{{ ptRows }}" as="p" hint-placeholder-count="0">
+                <div onClick="{{ p.onSel }}" style="display:grid; grid-template-columns:22px 1fr 46px 46px 46px 44px 18px; gap:4px; align-items:center; padding:4px 8px; border-top:1px solid #23282d; font-family:'IBM Plex Mono',monospace; font-size:11px; background:{{ p.bg }}; opacity:{{ p.op }}">
+                  <button onClick="{{ p.onToggle }}" title="include in solve" style="width:20px; height:20px; padding:0; border:0; background:transparent; color:oklch(0.82 0.14 75); cursor:pointer; font-family:inherit; font-size:11px">{{ p.label }}</button>
+                  <span style="color:#aeb5bd; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">{{ p.uv }}</span>
+                  <input value="{{ p.X }}" onChange="{{ p.onX }}" placeholder="X" style="width:100%; box-sizing:border-box; height:22px; padding:0 4px; border:1px solid #2c3238; border-radius:3px; background:#111315; color:#e4e7ea; font:inherit">
+                  <input value="{{ p.Y }}" onChange="{{ p.onY }}" placeholder="Y" style="width:100%; box-sizing:border-box; height:22px; padding:0 4px; border:1px solid #2c3238; border-radius:3px; background:#111315; color:#e4e7ea; font:inherit">
+                  <input value="{{ p.Z }}" onChange="{{ p.onZ }}" placeholder="0" style="width:100%; box-sizing:border-box; height:22px; padding:0 4px; border:1px solid #2c3238; border-radius:3px; background:#111315; color:#e4e7ea; font:inherit">
+                  <span style="text-align:right; color:{{ p.errColor }}">{{ p.err }}</span>
+                  <button onClick="{{ p.onDel }}" style="width:18px; height:20px; padding:0; border:0; background:transparent; color:#6d757e; cursor:pointer; font-size:13px">×</button>
+                </div>
+              </sc-for>
+              <sc-if value="{{ ptEmpty }}"><div style="padding:10px; border-top:1px solid #23282d; color:#6d757e; font-size:12px">No points yet — click on the image.</div></sc-if>
+            </div>
+            <div style="display:grid; grid-template-columns:92px 1fr; gap:8px 10px; align-items:center; font-size:12px">
+              <span style="color:#8a929b">Focal</span>
+              <div style="display:flex; gap:2px; padding:2px; background:#1b1f23; border:1px solid #2a2f35; border-radius:5px"><sc-for list="{{ optF }}" as="m" hint-placeholder-count="3"><button onClick="{{ m.onClick }}" style="flex:1; height:24px; border:0; border-radius:3px; font-size:11.5px; white-space:nowrap; cursor:pointer; background:{{ m.bg }}; color:{{ m.fg }}">{{ m.label }}</button></sc-for></div>
+              <span style="color:#8a929b">Principal pt</span>
+              <div style="display:flex; gap:2px; padding:2px; background:#1b1f23; border:1px solid #2a2f35; border-radius:5px"><sc-for list="{{ optPP }}" as="m" hint-placeholder-count="2"><button onClick="{{ m.onClick }}" style="flex:1; height:24px; border:0; border-radius:3px; font-size:11.5px; white-space:nowrap; cursor:pointer; background:{{ m.bg }}; color:{{ m.fg }}">{{ m.label }}</button></sc-for></div>
+              <span style="color:#8a929b">Distortion</span>
+              <div style="display:flex; gap:2px; padding:2px; background:#1b1f23; border:1px solid #2a2f35; border-radius:5px; flex-wrap:wrap"><sc-for list="{{ optDist }}" as="m" hint-placeholder-count="5"><button onClick="{{ m.onClick }}" style="flex:1; height:24px; padding:0 4px; border:0; border-radius:3px; font-family:'IBM Plex Mono',monospace; font-size:10.5px; cursor:pointer; background:{{ m.bg }}; color:{{ m.fg }}">{{ m.label }}</button></sc-for></div>
+              <span style="color:#8a929b">Start from</span>
+              <div style="display:flex; gap:2px; padding:2px; background:#1b1f23; border:1px solid #2a2f35; border-radius:5px"><sc-for list="{{ optInit }}" as="m" hint-placeholder-count="2"><button onClick="{{ m.onClick }}" style="flex:1; height:24px; border:0; border-radius:3px; font-size:11.5px; white-space:nowrap; cursor:pointer; background:{{ m.bg }}; color:{{ m.fg }}">{{ m.label }}</button></sc-for></div>
+            </div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#8a929b; line-height:1.5">{{ ptSummary }}</div>
+            <button onClick="{{ solvePoints }}" style="height:32px; border-radius:4px; border:0; background:oklch(0.82 0.14 75); color:#1b1408; font-weight:600; font-size:12px; cursor:pointer">Calibrate</button>
+            <sc-if value="{{ ptErr }}"><div style="font-size:12px; line-height:1.45; color:#ffb4a8">{{ ptErrMsg }}</div></sc-if>
+            <sc-if value="{{ ptHas }}">
+              <div style="display:flex; flex-direction:column; gap:7px; font-family:'IBM Plex Mono',monospace; font-size:12px">
+                <div style="display:flex; justify-content:space-between"><span style="color:#8a929b">reprojection RMS (Euclidean / pt)</span><span style="color:oklch(0.8 0.15 150)">{{ ptRms }} px</span></div>
+                <div style="display:flex; justify-content:space-between"><span style="color:#8a929b">max error</span><span>{{ ptMax }} px</span></div>
+                <sc-for list="{{ ptStd }}" as="k" hint-placeholder-count="3"><div style="display:flex; justify-content:space-between"><span style="color:#8a929b">σ {{ k.name }}</span><span>{{ k.sd }}</span></div></sc-for>
+                <sc-for list="{{ ptLog }}" as="w" hint-placeholder-count="0"><div style="font-family:'IBM Plex Sans',sans-serif; font-size:11.5px; color:#6f7780; line-height:1.45">{{ w.t }}</div></sc-for>
+                <sc-for list="{{ ptWarn }}" as="w" hint-placeholder-count="0"><div style="font-family:'IBM Plex Sans',sans-serif; color:oklch(0.82 0.14 75); line-height:1.45">{{ w.t }}</div></sc-for>
+              </div>
+            </sc-if>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ tPlane }}" hint-placeholder-val="{{ false }}">
+          <div style="padding:14px 18px 20px; display:flex; flex-direction:column; gap:14px">
+            <div style="font-size:16px; font-weight:600">Ground-plane homography</div>
+            <div style="color:#9aa2ab; line-height:1.55; text-wrap:pretty">Uses only points with Z = 0 (off-plane points are excluded automatically). H maps plane (X, Y, 1) to undistorted pixels. Hover the image to read plane coordinates in the status bar.</div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:#8a929b">{{ hSummary }}</div>
+            <button onClick="{{ solveH }}" style="height:32px; border-radius:4px; border:0; background:oklch(0.82 0.14 75); color:#1b1408; font-weight:600; font-size:12px; cursor:pointer">Solve homography</button>
+            <sc-if value="{{ hErr }}"><div style="font-size:12px; line-height:1.45; color:#ffb4a8">{{ hErrMsg }}</div></sc-if>
+            <sc-if value="{{ hHas }}">
+              <div style="display:flex; flex-direction:column; gap:8px; font-family:'IBM Plex Mono',monospace; font-size:11.5px">
+                <div style="display:flex; justify-content:space-between"><span style="color:#8a929b">RMS error (Euclidean / pt)</span><span style="color:oklch(0.8 0.15 150)">{{ hRms }} px</span></div>
+                <div style="color:#8a929b">H (‖H‖ = 1)</div>
+                <div style="background:#1b1f23; border:1px solid #262b31; border-radius:4px; padding:8px 10px; display:grid; grid-template-columns:repeat(3,1fr); gap:4px; text-align:right">
+                  <sc-for list="{{ hCells }}" as="c" hint-placeholder-count="9"><span>{{ c.v }}</span></sc-for>
+                </div>
+              </div>
+            </sc-if>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ tOverlay }}" hint-placeholder-val="{{ false }}">
+          <div style="padding:14px 18px 20px; display:flex; flex-direction:column; gap:14px">
+            <div style="font-size:16px; font-weight:600">Verify · manual overlay</div>
+            <div style="color:#9aa2ab; line-height:1.55; text-wrap:pretty">The world grid is projected through the full model. Drag sliders until it sits on the scene, or use them to seed a pose for Points. Type exact values in the fields.</div>
+            <div style="display:flex; flex-direction:column; gap:9px">
+              <sc-for list="{{ sliders }}" as="s" hint-placeholder-count="11">
+                <div style="display:grid; grid-template-columns:62px 1fr 78px; gap:8px; align-items:center">
+                  <span style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#8a929b">{{ s.label }}</span>
+                  <input type="range" min="{{ s.min }}" max="{{ s.max }}" step="{{ s.step }}" value="{{ s.val }}" onInput="{{ s.onInput }}" style="width:100%; min-width:0">
+                  <input value="{{ s.text }}" onChange="{{ s.onText }}" onBlur="{{ s.onBlur }}" onKeyDown="{{ s.onKey }}" style="width:100%; box-sizing:border-box; height:22px; padding:0 5px; border:1px solid #2c3238; border-radius:3px; background:#111315; color:#e4e7ea; font-family:'IBM Plex Mono',monospace; font-size:11px; text-align:right">
+                </div>
+              </sc-for>
+            </div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:#6f7780; line-height:1.5">R = Rz(γ)·Ry(β)·Rx(α), world→camera. C = camera centre in world units.</div>
+            <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px">
+              <button onClick="{{ gridLess }}" style="height:28px; border-radius:4px; border:1px solid #323840; background:#1f2327; color:#d9dde1; font-size:11.5px; cursor:pointer">grid −</button>
+              <button onClick="{{ gridMore }}" style="height:28px; border-radius:4px; border:1px solid #323840; background:#1f2327; color:#d9dde1; font-size:11.5px; cursor:pointer">grid +</button>
+              <button onClick="{{ toggleBox }}" style="height:28px; border-radius:4px; font-size:11.5px; cursor:pointer; border:1px solid #323840; background:{{ boxBg }}; color:#d9dde1">unit cube</button>
+            </div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:#aeb5bd">{{ gridInfo }} · points RMS {{ liveRms }}</div>
+            <sc-if value="{{ hasGT }}">
+              <div style="border:1px solid #262b31; border-radius:4px; overflow:hidden; font-family:'IBM Plex Mono',monospace; font-size:11.5px">
+                <div style="display:grid; grid-template-columns:44px 1fr 1fr 1fr; gap:6px; padding:6px 10px; background:#1b1f23; color:#6d757e; font-size:10.5px"><span>param</span><span style="text-align:right">truth</span><span style="text-align:right">current</span><span style="text-align:right">Δ</span></div>
+                <sc-for list="{{ gtRows }}" as="g" hint-placeholder-count="6"><div style="display:grid; grid-template-columns:44px 1fr 1fr 1fr; gap:6px; padding:5px 10px; border-top:1px solid #23282d"><span style="color:#8a929b">{{ g.name }}</span><span style="text-align:right">{{ g.gt }}</span><span style="text-align:right">{{ g.cur }}</span><span style="text-align:right; color:{{ g.dc }}">{{ g.d }}</span></div></sc-for>
+              </div>
+            </sc-if>
+          </div>
+        </sc-if>
+
+        <div style="padding:16px 18px 20px; border-top:1px solid #23282d; display:flex; flex-direction:column; gap:10px; background:#131619">
+          <div style="display:flex; justify-content:space-between; align-items:baseline">
+            <span style="font-size:10.5px; letter-spacing:0.08em; text-transform:uppercase; color:#6a727b">Camera</span>
+            <span style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:#6d757e">{{ camSrc }}</span>
+          </div>
+          <div style="font-family:'IBM Plex Mono',monospace; font-size:11.5px; line-height:1.7; color:#d9dde1; display:grid; grid-template-columns:34px 1fr; gap:0 10px">
+            <span style="color:#6d757e">K</span><span style="white-space:pre">{{ kText }}</span>
+            <span style="color:#6d757e">dist</span><span style="overflow-wrap:anywhere">{{ distText }}</span>
+            <span style="color:#6d757e">rvec</span><span>{{ rvecText }}</span>
+            <span style="color:#6d757e">t</span><span>{{ tText }}</span>
+            <span style="color:#6d757e">C</span><span>{{ cText }}</span>
+            <span style="color:#6d757e">FOV</span><span>{{ fovText }}</span>
+          </div>
+          <div style="display:flex; gap:6px">
+            <button onClick="{{ exportJson }}" style="flex:1; height:30px; border-radius:4px; border:1px solid #323840; background:#1f2327; color:#d9dde1; font-size:12px; cursor:pointer">Download JSON</button>
+            <button onClick="{{ copyJson }}" style="flex:1; height:30px; border-radius:4px; border:1px solid #323840; background:#1f2327; color:#d9dde1; font-size:12px; cursor:pointer">{{ copyLabel }}</button>
+            <button onClick="{{ resetCam }}" style="height:30px; padding:0 10px; border-radius:4px; border:1px solid #323840; background:#1f2327; color:#d9dde1; font-size:12px; cursor:pointer">Reset</button>
+          </div>
+        </div>
+      </div>
+      <sc-if value="{{ layoutB }}" hint-placeholder-val="{{ false }}">
+        <div style="flex:none; display:flex; gap:8px; padding:12px 18px; border-top:1px solid #23282d; background:#15181b">
+          <button onClick="{{ prevStep }}" style="height:34px; white-space:nowrap; padding:0 14px; border-radius:4px; border:1px solid #323840; background:#1f2327; color:#d9dde1; font-size:12px; cursor:pointer">← Back</button>
+          <button onClick="{{ nextStep }}" style="flex:1; height:34px; border-radius:4px; border:0; background:oklch(0.82 0.14 75); color:#1b1408; font-weight:600; font-size:12px; cursor:pointer">{{ nextLabel }}</button>
+        </div>
+      </sc-if>
+    </div>
+  </div>
+
+  <div style="height:28px; flex:none; display:flex; align-items:center; gap:18px; padding:0 14px; border-top:1px solid #23282d; background:#14171a; font-family:'IBM Plex Mono',monospace; font-size:11px; color:#8a929b">
+    <span ref="{{ cursorRef }}" style="min-width:260px; color:#c3c9cf">—</span>
+    <span>{{ zoomText }}</span>
+    <span style="flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">{{ hint }}</span>
+  </div>
+  <input ref="{{ fileRef }}" type="file" accept="image/*,video/*,.json,application/json" onChange="{{ onFile }}" style="display:none">
+  <div style="display:none"><video ref="{{ videoRef }}" muted="" playsInline=""></video></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+const AXC = { x: '#ff6b5e', y: '#4fd27a', z: '#5aa2ff' };
+const TOOLS = [['source', 'Source', 'image · video · webcam'], ['lens', 'Lens', 'plumb lines → k'], ['vp', 'Vanishing points', 'lines → f, c, R'], ['points', 'Points', '2D↔3D → K, dist, R, t'], ['plane', 'Plane', 'homography H'], ['overlay', 'Verify', 'overlay · sliders']];
+const fmt = (v, d) => (v === undefined || v === null || !isFinite(v)) ? '—' : (+v).toFixed(d === undefined ? 3 : d);
+const sfmt = v => !isFinite(v) ? '—' : Math.abs(v) >= 1e4 || (Math.abs(v) < 1e-3 && v !== 0) ? v.toExponential(3) : v.toPrecision(5);
+const ACC = 'oklch(0.82 0.14 75)';
+
+class Component extends DCLogic {
+  state = { layout: 'A', tool: 'source', axis: 'x', snap: true, view: 'raw', overlay: true, loupe: true, resid: true, lensModel: 'k1k2', ppMode: 'center', estF: true, fixAspect: true, estPP: false, distModel: 'keep', initCur: false, gridN: 8, gridStep: 1, box: false, srcKind: null, live: false, vt: 0, vdur: 0, busy: '', toast: '', copied: false, v: 0 };
+  els = {}; mkRef = k => el => { this.els[k] = el; if (el && (k === 'cv' || k === 'wrap')) requestAnimationFrame(() => this.attach()); };
+  canvasRef = this.mkRef('cv'); wrapRef = this.mkRef('wrap'); fileRef = this.mkRef('file'); videoRef = this.mkRef('video'); cursorRef = this.mkRef('cursor');
+  src = null; cam = null; lines = []; points = []; polys = []; activePoly = null; sel = null; pending = null; vw = { z: 1, x: 0, y: 0 }; cw = 0; ch = 0; res = {}; undoStack = []; nid = 1; mouse = null; drag = null; edits = {}; gt = null; space = false; uc = null; axisRot = 0; camSrc = 'default';
+  get C() { return window.Calib; }
+
+  componentDidMount() {
+    window.__calib = this; this.attach();
+    fetch('./webcams.csv').then(r => r.ok ? r.text() : '').then(t => { const L = this.parseCams(t); if (L.length) this.setState({ camList: L }); }).catch(() => { });
+    try { const u = JSON.parse(localStorage.getItem('calib.ui.v1') || '{}'); this.setState({ noProxy: !!u.noProxy, proxyTpl: u.proxyTpl || '', recent: u.recent || [] }); } catch (e) { }
+    window.addEventListener('mousemove', this.onMove); window.addEventListener('mouseup', this.onUp);
+    window.addEventListener('keydown', this.onKey); window.addEventListener('keyup', this.onKeyUp);
+    try { const s = JSON.parse(localStorage.getItem('calib.ui.v1') || '{}'); if (s.layout) this.setState({ layout: s.layout }); } catch (e) { }
+  }
+  componentDidUpdate() { this.attach(); }
+  componentWillUnmount() { window.removeEventListener('mousemove', this.onMove); window.removeEventListener('mouseup', this.onUp); window.removeEventListener('keydown', this.onKey); window.removeEventListener('keyup', this.onKeyUp); this.stopStream(); if (this.ro) this.ro.disconnect(); }
+  attach() {
+    const cv = this.els.cv, wr = this.els.wrap; if (!cv || !wr || cv === this._cv) return; this._cv = cv;
+    cv.addEventListener('mousedown', this.onDown); cv.addEventListener('wheel', this.onWheel, { passive: false }); cv.addEventListener('dblclick', this.onDbl);
+    cv.addEventListener('contextmenu', e => e.preventDefault()); cv.addEventListener('mouseleave', () => { if (!this.drag) { this.mouse = null; this.reqDraw(); } });
+    wr.addEventListener('dragover', e => e.preventDefault()); wr.addEventListener('drop', e => { e.preventDefault(); const f = e.dataTransfer.files && e.dataTransfer.files[0]; if (f) this.loadFile(f); });
+    if (this.ro) this.ro.disconnect(); this.ro = new ResizeObserver(() => this.resize()); this.ro.observe(wr); this.resize();
+  }
+  resize() { const wr = this.els.wrap, cv = this.els.cv; if (!wr || !cv) return; const r = wr.getBoundingClientRect(), dpr = window.devicePixelRatio || 1; if (!r.width || !r.height) return; const first = !this.cw || this._needFit; this._needFit = false; this.cw = r.width; this.ch = r.height; cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr); if (first && this.src) this.fit(); this.reqDraw(); }
+  reqDraw = () => { if (!this._raf) this._raf = requestAnimationFrame(() => this.draw()); };
+  bump() { this.setState(s => ({ v: s.v + 1 })); this.reqDraw(); }
+  toast(t) { this.setState({ toast: t }); clearTimeout(this._tt); this._tt = setTimeout(() => this.setState({ toast: '' }), 6000); }
+  fit = () => { if (!this.src) return; if (!this.cw) { this._needFit = true; this.resize(); if (!this.cw) return; } const z = Math.min(this.cw / this.src.w, this.ch / this.src.h) * 0.96; this.vw = { z, x: (this.cw - this.src.w * z) / 2, y: (this.ch - this.src.h * z) / 2 }; this.reqDraw(); this.bump(); };
+
+  // ---------- coordinate maps ----------
+  r2d(p) { return this.state.view === 'undist' ? this.C.undistortPixel(this.cam, p[0], p[1]) : p; }
+  d2r(p) { return this.state.view === 'undist' ? this.C.distortPixel(this.cam, p[0], p[1]) : p; }
+  i2d(p) { return this.state.view === 'undist' ? p : this.C.distortPixel(this.cam, p[0], p[1]); }
+  d2s(p) { return [(p[0] + 0.5) * this.vw.z + this.vw.x, (p[1] + 0.5) * this.vw.z + this.vw.y]; }
+  s2d(s) { return [(s[0] - this.vw.x) / this.vw.z - 0.5, (s[1] - this.vw.y) / this.vw.z - 0.5]; }
+  r2s(p) { return this.d2s(this.r2d(p)); }
+  w2s(X, rl) {
+    const c = this.cam, R = c.R, t = c.t;
+    const z = R[2][0] * X[0] + R[2][1] * X[1] + R[2][2] * X[2] + t[2]; if (!(z > 1e-6)) return null;
+    const x = (R[0][0] * X[0] + R[0][1] * X[1] + R[0][2] * X[2] + t[0]) / z, y = (R[1][0] * X[0] + R[1][1] * X[1] + R[1][2] * X[2] + t[1]) / z;
+    if (x * x + y * y > rl * rl) return null;
+    return this.d2s(this.i2d([c.fx * x + c.cx, c.fy * y + c.cy]));
+  }
+
+  // ---------- sources ----------
+  openFile = () => this.els.file && this.els.file.click();
+  onFile = e => { const f = e.target.files && e.target.files[0]; if (f) this.loadFile(f); e.target.value = ''; };
+  loadFile(f) {
+    if (/json/.test(f.type) || /\.json$/i.test(f.name)) { f.text().then(t => this.importJson(t)); return; }
+    this.stopStream(); const url = URL.createObjectURL(f);
+    if (f.type.startsWith('video/')) {
+      const v = this.els.video; v.srcObject = null; v.src = url; v.muted = true;
+      v.onloadedmetadata = () => { this.gt = null; this.src = null; this._camId = null; this.setState({ srcKind: 'video', vdur: v.duration || 0, vt: 0, live: false }); v.currentTime = 0.0001; };
+      v.onseeked = () => { this.setFromDrawable(v, v.videoWidth, v.videoHeight, f.name + ' @ ' + v.currentTime.toFixed(3) + ' s'); this.setState({ vt: v.currentTime }); };
+      return;
+    }
+    const im = new Image();
+    im.onload = () => { this.gt = null; this.src = null; this._camId = null; this.setFromDrawable(im, im.naturalWidth, im.naturalHeight, f.name); this.setState({ srcKind: 'image', live: false }); URL.revokeObjectURL(url); };
+    im.onerror = () => this.toast('Could not decode that file.'); im.src = url;
+  }
+  parseCams(t) {
+    const rows = String(t || '').split(/\r?\n/).map(l => l.trim()).filter(Boolean); if (!rows.length) return [];
+    const hdr = rows[0].toLowerCase(), body = /url/.test(hdr) ? rows.slice(1) : rows;
+    return body.map((l, i) => { const p = l.split(','); if (p.length < 3) { const u = p.find(x => /^https?:\/\//.test(x.trim())); return u ? { id: 'cam' + i, name: u.trim(), url: u.trim(), lat: NaN, lon: NaN } : null; } const lon = p.pop(), lat = p.pop(), url = p.pop(), id = p.shift(); return { id: id || 'cam' + i, name: (p.join(',').trim() || url || '').trim(), url: (url || '').trim(), lat: +lat, lon: +lon }; }).filter(c => c && /^https?:\/\//.test(c.url));
+  }
+  loadSingleUrl = () => {
+    const raw = (this.state.urlInput || '').trim(); if (!raw) { this.toast('Paste a webcam / image URL first.'); return; }
+    const url = /^https?:\/\//i.test(raw) ? raw : 'https://' + raw;
+    let u; try { u = new URL(url); } catch (e) { this.toast('That is not a valid URL.'); return; }
+    const name = u.hostname + (u.pathname.length > 1 ? ' · ' + u.pathname.split('/').filter(Boolean).slice(-2).join('/') : '');
+    const recent = [url].concat((this.state.recent || []).filter(x => x !== url)).slice(0, 6);
+    this.setState({ recent }); try { const o = JSON.parse(localStorage.getItem('calib.ui.v1') || '{}'); o.recent = recent; localStorage.setItem('calib.ui.v1', JSON.stringify(o)); } catch (e) { }
+    this.loadUrl({ id: 'url:' + url, name, url, lat: NaN, lon: NaN });
+  };
+  importCams = () => { const i = document.createElement('input'); i.type = 'file'; i.accept = '.csv,.txt,text/csv,text/plain'; i.onchange = () => { const f = i.files && i.files[0]; if (!f) return; f.text().then(t => { const L = this.parseCams(t); if (L.length) this.setState({ camList: L, camQuery: '' }); else this.toast('No camera URLs found. Expected columns: ID, Name, ImageURL, Latitude, Longitude (or one URL per line).'); }); }; i.click(); };
+  setProxyTpl = e => { const v = e.target.value; this.setState({ proxyTpl: v }); try { const u = JSON.parse(localStorage.getItem('calib.ui.v1') || '{}'); u.proxyTpl = v; localStorage.setItem('calib.ui.v1', JSON.stringify(u)); } catch (er) { } };
+  toggleProxy = () => { const v = !this.state.noProxy; this.setState({ noProxy: v }); try { const u = JSON.parse(localStorage.getItem('calib.ui.v1') || '{}'); u.noProxy = v; localStorage.setItem('calib.ui.v1', JSON.stringify(u)); } catch (e) { } };
+  loadUrl(cam, refresh) {
+    this.stopStream(); this.webcam = cam; this.setState({ busy: (refresh ? 'Fetching latest frame · ' : 'Loading · ') + cam.name, camSel: cam.id });
+    const cb = 'cb=' + Date.now(), direct = cam.url + (cam.url.includes('?') ? '&' : '?') + cb;
+    const tpl = (this.state.proxyTpl || '').trim() || 'https://images.weserv.nl/?url={url}', proxy = (tpl.includes('{url}') ? tpl.replace('{url}', encodeURIComponent(cam.url)) : tpl + encodeURIComponent(cam.url)) + (tpl.includes('?') ? '&' : '?') + cb;
+    const tryLoad = (src, via, next) => {
+      const im = new Image(); im.crossOrigin = 'anonymous'; im.referrerPolicy = 'no-referrer';
+      im.onload = () => { try { this.gt = null; if (!refresh && this._camId !== cam.id) this.src = null; this._camId = cam.id; this.setFromDrawable(im, im.naturalWidth, im.naturalHeight, cam.name + ' · ' + new Date().toLocaleTimeString() + (via ? ' · via image proxy' : '')); this.setState({ busy: '', srcKind: 'url', live: false }); } catch (e) { next ? next() : this.failUrl(cam, e.message); } };
+      im.onerror = () => next ? next() : this.failUrl(cam, 'not reachable');
+      im.src = src;
+    };
+    const directOk = location.protocol !== 'https:' || cam.url.startsWith('https:');
+    if (this.state.noProxy) { if (directOk) tryLoad(direct, false); else this.failUrl(cam, 'http:// camera on an https:// page needs the image proxy, which is turned off'); }
+    else if (directOk) tryLoad(direct, false, () => tryLoad(proxy, true)); else tryLoad(proxy, true);
+  }
+  failUrl(cam, why) { this.setState({ busy: '' }); this.toast(`Could not load “${cam.name}” (${why}). The camera may be offline, or its server blocks cross-origin pixel access — try another camera.`); }
+  setFromDrawable(d, w, h, name) {
+    const cv = document.createElement('canvas'); cv.width = w; cv.height = h; const ctx = cv.getContext('2d', { willReadFrequently: true }); ctx.drawImage(d, 0, 0, w, h);
+    const id = ctx.getImageData(0, 0, w, h), pre = this.C.prepImage(id.data, w, h);
+    const changed = !this.src || this.src.w !== w || this.src.h !== h;
+    this.src = Object.assign({ canvas: cv, w, h, data: id.data, name }, pre); this.uc = null;
+    if (changed) this.resetAll(w, h);
+    this.bump();
+  }
+  resetAll(w, h) { this.lines = []; this.points = []; this.polys = []; this.res = {}; this.activePoly = null; this.sel = null; this.pending = null; this.cam = this.C.defaultCam(w, h); this.camSrc = 'default'; this.undoStack = []; this.axisRot = 0; this.fit(); }
+  onScrub = e => { const v = this.els.video; if (v) v.currentTime = +e.target.value; };
+  frameBack = () => { const v = this.els.video; if (v) v.currentTime = Math.max(0, v.currentTime - 1 / 30); };
+  frameFwd = () => { const v = this.els.video; if (v) v.currentTime = Math.min(v.duration, v.currentTime + 1 / 30); };
+  startWebcam = async () => {
+    try {
+      this.stopStream();
+      const st = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+      this.stream = st; const v = this.els.video; v.removeAttribute('src'); v.srcObject = st; v.muted = true; await v.play(); this.gt = null;
+      this.setState({ srcKind: 'webcam', live: true }, () => this.liveLoop());
+    } catch (err) {
+      const name = err && err.name, framed = window.top !== window.self;
+      const why = !window.isSecureContext ? 'This page is not a secure context — serve it from http://localhost or https://.'
+        : name === 'NotFoundError' ? 'No camera was found on this device.'
+        : name === 'NotReadableError' ? 'The camera is in use by another application.'
+        : framed ? 'This embedded preview is not allowed to use the camera. Run the tool from http://localhost (e.g. python3 -m http.server) or open it in its own tab.'
+        : 'Camera permission was denied — re-enable it in the site settings (icon left of the address bar) and try again.';
+      this.toast('Webcam unavailable: ' + why + ' Public webcam URLs in Source still work.');
+    }
+  };
+  liveLoop = () => {
+    if (!this.state.live) return; const v = this.els.video;
+    if (v && v.videoWidth) {
+      const w = v.videoWidth, h = v.videoHeight;
+      if (!this.src || this.src.w !== w || this.src.h !== h) { const cv = document.createElement('canvas'); cv.width = w; cv.height = h; this.src = { canvas: cv, w, h, name: 'webcam (live)' }; this.resetAll(w, h); this.bump(); }
+      if (!this.src.live) { const cv = document.createElement('canvas'); cv.width = w; cv.height = h; this.src = Object.assign({}, this.src, { canvas: cv, live: true, gx: null }); }
+      this.src.canvas.getContext('2d').drawImage(v, 0, 0, w, h); this.reqDraw();
+    }
+    this._live = requestAnimationFrame(this.liveLoop);
+  };
+  captureFrame = () => { const v = this.els.video; if (!v || !v.videoWidth) return; this.setState({ live: false }); cancelAnimationFrame(this._live); this.setFromDrawable(v, v.videoWidth, v.videoHeight, 'webcam frame ' + new Date().toLocaleTimeString()); };
+  resumeLive = () => this.setState({ live: true }, () => this.liveLoop());
+  stopStream() { cancelAnimationFrame(this._live); if (this.stream) { this.stream.getTracks().forEach(t => t.stop()); this.stream = null; } if (this.state.live) this.setState({ live: false }); }
+  loadSynthetic = () => {
+    this.stopStream(); this.setState({ busy: 'Ray-tracing synthetic scene · 2×2 supersampled · k1 −0.18, k2 0.05' });
+    setTimeout(() => { try { this._synth(); } catch (e) { console.error(e); this.setState({ busy: '' }); this.toast('Synthetic scene failed: ' + e.message + ' ' + (e.stack || '').split('\n').slice(0, 3).join(' | ')); } }, 40);
+  };
+  _synth() {
+    {
+      const C = this.C, w = 1280, h = 800, L = C.lookAt([6.6, 5.9, 2.3], [0.9, 0.9, 1.1]);
+      const gt = { w, h, fx: 880, fy: 880, cx: 651.4, cy: 402.8, k1: -0.18, k2: 0.05, p1: 0, p2: 0, k3: 0, R: L.R, t: L.t, hasPose: true };
+      const cv = document.createElement('canvas'); cv.width = w; cv.height = h; cv.getContext('2d').putImageData(new ImageData(C.renderSynthetic(gt), w, h), 0, 0);
+      this.src = null; this.gt = gt; this.setFromDrawable(cv, w, h, 'synthetic room corner (floor + 2 walls, 1-unit checkers)');
+      this.setState({ busy: '', srcKind: 'synthetic', live: false });
+    }
+  }
+
+  // ---------- undo ----------
+  pushUndo() { this.undoStack.push(JSON.stringify({ l: this.lines, p: this.points, y: this.polys, c: this.cam, s: this.camSrc })); if (this.undoStack.length > 200) this.undoStack.shift(); }
+  undo() { const s = this.undoStack.pop(); if (!s) return; const o = JSON.parse(s); this.lines = o.l; this.points = o.p; this.polys = o.y; this.cam = o.c; this.camSrc = o.s; this.activePoly = null; this.sel = null; this.pending = null; this.uc = null; this.bump(); }
+
+  // ---------- interaction ----------
+  pos(e) { const r = this._cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; }
+  hitTest(s) {
+    const t = this.state.tool, R = 8; let best = null, bd = R;
+    const chk = (p, h) => { const q = this.r2s(p), d = Math.hypot(q[0] - s[0], q[1] - s[1]); if (d < bd) { bd = d; best = h; } };
+    if (t === 'lens') this.polys.forEach(p => p.pts.forEach((q, i) => chk(q, { kind: 'poly', id: p.id, i })));
+    if (t === 'vp') this.lines.forEach(l => { chk(l.a, { kind: 'line', id: l.id, i: 0 }); chk(l.b, { kind: 'line', id: l.id, i: 1 }); });
+    if (t === 'points' || t === 'plane') this.points.forEach(p => chk(p.img, { kind: 'pt', id: p.id }));
+    return best;
+  }
+  getHandle(h) { if (!h) return null; if (h.kind === 'pt') { const p = this.points.find(q => q.id === h.id); return p && { get: () => p.img, set: v => p.img = v }; } if (h.kind === 'line') { const l = this.lines.find(q => q.id === h.id); return l && { get: () => h.i ? l.b : l.a, set: v => { if (h.i) l.b = v; else l.a = v; } }; } if (h.kind === 'poly') { const p = this.polys.find(q => q.id === h.id); return p && p.pts[h.i] && { get: () => p.pts[h.i], set: v => p.pts[h.i] = v }; } return null; }
+  onDown = e => {
+    if (!this.src) return; const s = this.pos(e), t = this.state.tool;
+    if (e.button === 1 || e.button === 2 || this.space || t === 'overlay' || t === 'source') { this.drag = { type: 'pan', s0: s, v0: Object.assign({}, this.vw) }; return; }
+    if (e.button !== 0) return;
+    const hit = this.pending ? null : this.hitTest(s);
+    if (hit) { this.pushUndo(); this.sel = hit; this.drag = { type: 'handle', hit }; this.bump(); return; }
+    const pr = this.d2r(this.s2d(s));
+    if (t === 'lens') {
+      this.pushUndo(); let p = this.polys.find(q => q.id === this.activePoly);
+      if (!p) { p = { id: this.nid++, pts: [] }; this.polys.push(p); this.activePoly = p.id; }
+      p.pts.push(pr); this.sel = { kind: 'poly', id: p.id, i: p.pts.length - 1 };
+    } else if (t === 'vp') {
+      if (this.pending) { const l = this.lines.find(q => q.id === this.pending); this.pending = null; if (l) { l.b = pr; this.finalizeLine(l); } }
+      else { this.pushUndo(); const l = { id: this.nid++, axis: this.state.axis, a: pr, b: pr.slice() }; this.lines.push(l); this.drag = { type: 'newline', id: l.id, s0: s }; this.sel = { kind: 'line', id: l.id, i: 1 }; }
+    } else if (t === 'points' || t === 'plane') {
+      this.pushUndo(); let p = pr;
+      if (this.state.snap && this.src.gx) { const q = this.C.cornerSubPix(this.src, pr); if (q) p = q; }
+      const id = this.nid++; this.points.push({ id, img: p, ws: ['', '', ''], world: null, on: true }); this.sel = { kind: 'pt', id };
+    }
+    this.bump();
+  };
+  onMove = e => {
+    if (!this._cv) return; const s = this.pos(e), inside = s[0] >= 0 && s[1] >= 0 && s[0] <= this.cw && s[1] <= this.ch;
+    if (this.drag) {
+      if (this.drag.type === 'pan') { this.vw = Object.assign({}, this.drag.v0, { x: this.drag.v0.x + s[0] - this.drag.s0[0], y: this.drag.v0.y + s[1] - this.drag.s0[1] }); }
+      else if (this.drag.type === 'handle') { const h = this.getHandle(this.drag.hit); if (h) h.set(this.d2r(this.s2d(s))); }
+      else if (this.drag.type === 'newline') { const l = this.lines.find(q => q.id === this.drag.id); if (l) l.b = this.d2r(this.s2d(s)); }
+    }
+    this.mouse = inside || this.drag ? s : null; this.updateCursor(); this.reqDraw();
+  };
+  onUp = e => {
+    const d = this.drag; this.drag = null; if (!d) return;
+    if (d.type === 'newline') { const l = this.lines.find(q => q.id === d.id), s = this.pos(e); if (l) { if (Math.hypot(s[0] - d.s0[0], s[1] - d.s0[1]) < 4) this.pending = l.id; else this.finalizeLine(l); } }
+    if (d.type === 'handle' && d.hit.kind === 'pt' && this.state.snap && this.src && this.src.gx) { const h = this.getHandle(d.hit); if (h) { const q = this.C.cornerSubPix(this.src, h.get()); if (q) h.set(q); } }
+    if (d.type === 'handle' && d.hit.kind === 'line' && this.state.snap) { const l = this.lines.find(q => q.id === d.hit.id); if (l) this.finalizeLine(l); }
+    if (d.type === 'pan') { this.bump(); return; }
+    this.uc = null; this.bump();
+  };
+  finalizeLine(l) {
+    if (Math.hypot(l.b[0] - l.a[0], l.b[1] - l.a[1]) < 3) { this.lines = this.lines.filter(q => q !== l); this.sel = null; return; }
+    if (this.state.snap && this.src.gx) { const r = this.C.refineSegment(this.src, l.a, l.b, this.cam); if (r) { l.a = r[0]; l.b = r[1]; l.fit = true; } else l.fit = false; }
+  }
+  onWheel = e => { e.preventDefault(); if (!this.src) return; const s = this.pos(e), k = Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0015)), z = Math.max(0.05, Math.min(80, this.vw.z * k)), f = z / this.vw.z; this.vw = { z, x: s[0] - (s[0] - this.vw.x) * f, y: s[1] - (s[1] - this.vw.y) * f }; this.reqDraw(); clearTimeout(this._zt); this._zt = setTimeout(() => this.bump(), 120); };
+  onDbl = () => { if (this.state.tool === 'lens') this.finishPoly(); };
+  finishPoly = () => { const p = this.polys.find(q => q.id === this.activePoly); this.activePoly = null; if (p) { if (p.pts.length < 2) this.polys = this.polys.filter(q => q !== p); else if (this.state.snap && this.src && this.src.gx) p.pts = this.C.refinePoly(this.src, p.pts); } this.bump(); };
+  delSel() {
+    const s = this.sel; if (!s) return; this.pushUndo();
+    if (s.kind === 'pt') this.points = this.points.filter(p => p.id !== s.id);
+    if (s.kind === 'line') this.lines = this.lines.filter(p => p.id !== s.id);
+    if (s.kind === 'poly') { const p = this.polys.find(q => q.id === s.id); if (p) { p.pts.splice(s.i, 1); if (!p.pts.length) this.polys = this.polys.filter(q => q !== p); } }
+    this.sel = null; this.bump();
+  }
+  onKey = e => {
+    const tag = (e.target && e.target.tagName) || ''; if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    if (e.key === ' ') { this.space = true; e.preventDefault(); return; }
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); this.undo(); return; }
+    if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); this.delSel(); return; }
+    if (e.key === 'Enter') { this.finishPoly(); return; }
+    if (e.key === 'Escape') { if (this.pending) { this.lines = this.lines.filter(l => l.id !== this.pending); this.pending = null; } this.activePoly = null; this.sel = null; this.bump(); return; }
+    if (e.key === 'f' || e.key === 'F') { this.fit(); return; }
+    const dir = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
+    if (dir && this.sel) { e.preventDefault(); const h = this.getHandle(this.sel); if (h) { if (!e.repeat) this.pushUndo(); const st = e.shiftKey ? 1 : 0.1, p = h.get(); h.set([p[0] + dir[0] * st, p[1] + dir[1] * st]); this.bump(); this.updateCursor(); } }
+  };
+  onKeyUp = e => { if (e.key === ' ') this.space = false; };
+  updateCursor() {
+    const el = this.els.cursor; if (!el) return;
+    if (!this.mouse || !this.src) { el.textContent = '—'; return; }
+    const d = this.s2d(this.mouse), r = this.d2r(d); let s = `u ${fmt(r[0], 2)}  v ${fmt(r[1], 2)}`;
+    const h = this.res.h; if (h && h.ok && this.state.tool === 'plane') { const ip = this.C.undistortPixel(this.cam, r[0], r[1]), q = this.C.applyH(h.Hi, ip); if (q) s += `   plane X ${fmt(q[0], 3)}  Y ${fmt(q[1], 3)}`; }
+    el.textContent = s;
+  }
+
+  // ---------- drawing ----------
+  dispImage() {
+    if (this.state.view !== 'undist' || this.src.live) return this.src.canvas; const c = this.cam, key = [c.fx, c.fy, c.cx, c.cy, c.k1, c.k2, c.p1, c.p2, c.k3].join();
+    if (this.uc && this.uc.key === key) return this.uc.canvas;
+    const cv = document.createElement('canvas'); cv.width = this.src.w; cv.height = this.src.h; cv.getContext('2d').putImageData(new ImageData(this.C.undistortImage(this.src.data, this.src.w, this.src.h, c), this.src.w, this.src.h), 0, 0);
+    this.uc = { key, canvas: cv }; return cv;
+  }
+  drawCurve(ctx, pts) { let on = false; ctx.beginPath(); for (const s of pts) { if (!s) { on = false; continue; } if (on) ctx.lineTo(s[0], s[1]); else { ctx.moveTo(s[0], s[1]); on = true; } } ctx.stroke(); }
+  worldLine(ctx, A, B, rl, n) { const pts = []; n = n || 48; for (let i = 0; i <= n; i++) { const t = i / n; pts.push(this.w2s([A[0] + t * (B[0] - A[0]), A[1] + t * (B[1] - A[1]), A[2] + t * (B[2] - A[2])], rl)); } this.drawCurve(ctx, pts); }
+  draw() {
+    this._raf = 0; const cv = this.els.cv; if (!cv) return; const ctx = cv.getContext('2d'), dpr = window.devicePixelRatio || 1;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.fillStyle = '#0b0d0f'; ctx.fillRect(0, 0, this.cw, this.ch); if (!this.src) return;
+    const C = this.C, cam = this.cam, tool = this.state.tool, { z, x, y } = this.vw, img = this.dispImage();
+    ctx.save(); ctx.setTransform(dpr * z, 0, 0, dpr * z, dpr * x, dpr * y); ctx.imageSmoothingEnabled = z < 2.5; ctx.drawImage(img, 0, 0); ctx.restore();
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    const rl = C.radiusLimit(cam);
+    if ((this.state.overlay || tool === 'overlay') && cam.hasPose) {
+      const N = this.state.gridN, S = this.state.gridStep, E = N * S;
+      ctx.globalAlpha = 0.75; ctx.strokeStyle = '#f2f2ee'; ctx.lineWidth = 1;
+      for (let i = 0; i <= N; i++) { this.worldLine(ctx, [i * S, 0, 0], [i * S, E, 0], rl); this.worldLine(ctx, [0, i * S, 0], [E, i * S, 0], rl); }
+      ctx.globalAlpha = 1; ctx.lineWidth = 2.5;
+      [['#ff6b5e', [2 * S, 0, 0]], ['#4fd27a', [0, 2 * S, 0]], ['#5aa2ff', [0, 0, 2 * S]]].forEach(([c, B]) => { ctx.strokeStyle = c; this.worldLine(ctx, [0, 0, 0], B, rl, 24); });
+      if (this.state.box) { ctx.strokeStyle = ACC; ctx.lineWidth = 1.5; const s = S, V = [[0, 0, 0], [s, 0, 0], [s, s, 0], [0, s, 0], [0, 0, s], [s, 0, s], [s, s, s], [0, s, s]]; [[0, 1], [1, 2], [2, 3], [3, 0], [4, 5], [5, 6], [6, 7], [7, 4], [0, 4], [1, 5], [2, 6], [3, 7]].forEach(([a, b]) => this.worldLine(ctx, V[a], V[b], rl, 16)); }
+    }
+    if (tool === 'plane' && this.res.h && this.res.h.ok) {
+      const pts = this.points.filter(p => p.on && p.world && Math.abs(p.world[2]) < 1e-9); if (pts.length) {
+        let x0 = Math.min(...pts.map(p => p.world[0])), x1 = Math.max(...pts.map(p => p.world[0])), y0 = Math.min(...pts.map(p => p.world[1])), y1 = Math.max(...pts.map(p => p.world[1]));
+        const span = Math.max(x1 - x0, y1 - y0) || 1, st = Math.pow(10, Math.floor(Math.log10(span / 4))); x0 = Math.floor(x0 / st - 1) * st; x1 = Math.ceil(x1 / st + 1) * st; y0 = Math.floor(y0 / st - 1) * st; y1 = Math.ceil(y1 / st + 1) * st;
+        ctx.strokeStyle = '#c792ff'; ctx.lineWidth = 1; ctx.globalAlpha = 0.85; const H = this.res.h.H;
+        const L = (A, B) => { const P = []; for (let i = 0; i <= 40; i++) { const t = i / 40, q = C.applyH(H, [A[0] + t * (B[0] - A[0]), A[1] + t * (B[1] - A[1])]); P.push(q && Math.hypot((q[0] - cam.cx) / cam.fx, (q[1] - cam.cy) / cam.fy) < rl ? this.d2s(this.i2d(q)) : null); } this.drawCurve(ctx, P); };
+        for (let X = x0; X <= x1 + 1e-9; X += st) L([X, y0], [X, y1]); for (let Y = y0; Y <= y1 + 1e-9; Y += st) L([x0, Y], [x1, Y]); ctx.globalAlpha = 1;
+      }
+    }
+    for (const p of this.polys) {
+      const act = tool === 'lens'; ctx.globalAlpha = act ? 1 : 0.35; ctx.strokeStyle = '#4fd1d9'; ctx.lineWidth = 1.25;
+      this.drawCurve(ctx, p.pts.map(q => this.r2s(q)));
+      if (act) p.pts.forEach((q, i) => this.handle(ctx, this.r2s(q), '#4fd1d9', this.isSel('poly', p.id, i)));
+    }
+    const vpr = this.res.vp && this.res.vp.ok ? this.res.vp : null;
+    for (const l of this.lines) {
+      const act = tool === 'vp'; ctx.globalAlpha = act ? 1 : 0.35; const col = AXC[l.axis];
+      if (act && vpr && vpr.vps[l.axis]) {
+        const V = vpr.vps[l.axis], a = C.undistortPixel(cam, l.a[0], l.a[1]), b = C.undistortPixel(cam, l.b[0], l.b[1]), m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+        let E; const diag = Math.hypot(cam.w, cam.h) * 3;
+        if (V.finite) { const d = [V.pix[0] - m[0], V.pix[1] - m[1]], L = Math.hypot(...d); E = L > diag ? [m[0] + d[0] / L * diag, m[1] + d[1] / L * diag] : V.pix; } else { const d = [V.dir[0], V.dir[1]], L = Math.hypot(...d), sg = (d[0] * (b[0] - a[0]) + d[1] * (b[1] - a[1])) > 0 ? 1 : -1; E = [m[0] + sg * d[0] / L * diag, m[1] + sg * d[1] / L * diag]; }
+        const P = []; for (let i = 0; i <= 40; i++) { const t = i / 40, q = [m[0] + t * (E[0] - m[0]), m[1] + t * (E[1] - m[1])]; P.push(Math.hypot((q[0] - cam.cx) / cam.fx, (q[1] - cam.cy) / cam.fy) < rl ? this.d2s(this.i2d(q)) : null); }
+        ctx.setLineDash([4, 5]); ctx.globalAlpha = 0.45; ctx.strokeStyle = col; ctx.lineWidth = 1; this.drawCurve(ctx, P); ctx.setLineDash([]); ctx.globalAlpha = 1;
+      }
+      ctx.strokeStyle = col; ctx.lineWidth = 1.5; const a = this.r2s(l.a), b = this.r2s(l.b), ia = C.undistortPixel(cam, l.a[0], l.a[1]), ib = C.undistortPixel(cam, l.b[0], l.b[1]); if (isFinite(ia[0]) && isFinite(ib[0])) { const P = []; for (let i = 0; i <= 24; i++) { const t = i / 24; P.push(this.d2s(this.i2d([ia[0] + t * (ib[0] - ia[0]), ia[1] + t * (ib[1] - ia[1])]))); } this.drawCurve(ctx, P); } else { ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke(); }
+      if (act) { this.handle(ctx, a, col, this.isSel('line', l.id, 0)); this.handle(ctx, b, col, this.isSel('line', l.id, 1)); }
+    }
+    if (vpr && tool === 'vp') for (const k of Object.keys(vpr.vps)) { const V = vpr.vps[k]; if (!V.finite) continue; const s = this.d2s(this.i2d(V.pix)); if (s[0] > -20 && s[1] > -20 && s[0] < this.cw + 20 && s[1] < this.ch + 20) { ctx.strokeStyle = AXC[k]; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(s[0], s[1], 7, 0, 7); ctx.stroke(); } }
+    ctx.globalAlpha = 1; ctx.font = "500 11px 'IBM Plex Mono', monospace";
+    const ptAct = tool === 'points' || tool === 'plane' || tool === 'overlay';
+    this.points.forEach((p, i) => {
+      const s = this.r2s(p.img), sel = this.isSel('pt', p.id); ctx.globalAlpha = p.on ? (ptAct ? 1 : 0.4) : 0.3;
+      if (cam.hasPose && p.world && this.state.resid) { const q = C.project(cam, p.world); if (q) { const s1 = this.r2s(q), ex = [s[0] + (s1[0] - s[0]) * 10, s[1] + (s1[1] - s[1]) * 10]; ctx.strokeStyle = '#ff5fd2'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(s[0], s[1]); ctx.lineTo(ex[0], ex[1]); ctx.stroke(); ctx.beginPath(); ctx.arc(s1[0], s1[1], 2.5, 0, 7); ctx.stroke(); } }
+      ctx.strokeStyle = sel ? '#ffffff' : '#ffc24d'; ctx.lineWidth = sel ? 2 : 1.25; ctx.beginPath(); ctx.moveTo(s[0] - 7, s[1]); ctx.lineTo(s[0] - 2, s[1]); ctx.moveTo(s[0] + 2, s[1]); ctx.lineTo(s[0] + 7, s[1]); ctx.moveTo(s[0], s[1] - 7); ctx.lineTo(s[0], s[1] - 2); ctx.moveTo(s[0], s[1] + 2); ctx.lineTo(s[0], s[1] + 7); ctx.stroke();
+      ctx.fillStyle = 'rgba(11,13,15,0.75)'; const lab = String(i + 1); ctx.fillRect(s[0] + 7, s[1] - 18, ctx.measureText(lab).width + 6, 14); ctx.fillStyle = sel ? '#fff' : '#ffc24d'; ctx.fillText(lab, s[0] + 10, s[1] - 7);
+    });
+    ctx.globalAlpha = 1;
+    if (this.pending && this.mouse) { const l = this.lines.find(q => q.id === this.pending); if (l) { const a = this.r2s(l.a); ctx.strokeStyle = AXC[l.axis]; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(this.mouse[0], this.mouse[1]); ctx.stroke(); ctx.setLineDash([]); } }
+    if (tool === 'lens' && this.activePoly && this.mouse) { const p = this.polys.find(q => q.id === this.activePoly); if (p && p.pts.length) { const a = this.r2s(p.pts[p.pts.length - 1]); ctx.strokeStyle = '#4fd1d9'; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(this.mouse[0], this.mouse[1]); ctx.stroke(); ctx.setLineDash([]); } }
+    if (this.state.loupe && this.mouse && tool !== 'source' && tool !== 'overlay') this.drawLoupe(ctx, img);
+  }
+  handle(ctx, s, col, sel) { ctx.fillStyle = sel ? '#ffffff' : 'rgba(11,13,15,0.6)'; ctx.strokeStyle = sel ? '#ffffff' : col; ctx.lineWidth = 1.25; ctx.fillRect(s[0] - 3.5, s[1] - 3.5, 7, 7); ctx.strokeRect(s[0] - 3.5, s[1] - 3.5, 7, 7); }
+  isSel(kind, id, i) { const s = this.sel; return !!s && s.kind === kind && s.id === id && (i === undefined || s.i === i); }
+  drawLoupe(ctx, img) {
+    const L = 168, mag = 12, sw = L / mag, m = this.mouse; let lx = this.cw - L - 12, ly = 12; if (m[0] > lx - 20 && m[1] < ly + L + 20) lx = 12; if (lx === 12 && m[0] < L + 32 && m[1] < L + 32) ly = this.ch - L - 40;
+    const d = this.s2d(m), sx = d[0] + 0.5 - sw / 2, sy = d[1] + 0.5 - sw / 2;
+    ctx.save(); ctx.fillStyle = '#000'; ctx.fillRect(lx, ly, L, L); ctx.beginPath(); ctx.rect(lx, ly, L, L); ctx.clip(); ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(img, Math.floor(sx), Math.floor(sy), Math.ceil(sw) + 1, Math.ceil(sw) + 1, lx - (sx - Math.floor(sx)) * mag, ly - (sy - Math.floor(sy)) * mag, (Math.ceil(sw) + 1) * mag, (Math.ceil(sw) + 1) * mag);
+    const toL = p => { const q = this.r2d(p); return [lx + (q[0] + 0.5 - sx) * mag, ly + (q[1] + 0.5 - sy) * mag]; };
+    ctx.lineWidth = 1.5;
+    this.points.forEach(p => { const q = toL(p.img); ctx.strokeStyle = '#ffc24d'; ctx.beginPath(); ctx.arc(q[0], q[1], 4, 0, 7); ctx.stroke(); });
+    this.lines.forEach(l => { ctx.strokeStyle = AXC[l.axis]; const a = toL(l.a), b = toL(l.b); ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke(); });
+    this.polys.forEach(p => { ctx.strokeStyle = '#4fd1d9'; this.drawCurve(ctx, p.pts.map(toL)); });
+    ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 1; const c = [lx + L / 2, ly + L / 2]; ctx.beginPath(); ctx.moveTo(c[0] - 12, c[1]); ctx.lineTo(c[0] - 3, c[1]); ctx.moveTo(c[0] + 3, c[1]); ctx.lineTo(c[0] + 12, c[1]); ctx.moveTo(c[0], c[1] - 12); ctx.lineTo(c[0], c[1] - 3); ctx.moveTo(c[0], c[1] + 3); ctx.lineTo(c[0], c[1] + 12); ctx.stroke();
+    ctx.restore(); ctx.strokeStyle = '#3a4047'; ctx.lineWidth = 1; ctx.strokeRect(lx + 0.5, ly + 0.5, L - 1, L - 1);
+    ctx.fillStyle = 'rgba(11,13,15,0.85)'; ctx.fillRect(lx, ly + L, L, 18); ctx.fillStyle = '#c3c9cf'; ctx.font = "11px 'IBM Plex Mono', monospace"; const r = this.d2r(d); ctx.fillText(`${r[0].toFixed(2)}, ${r[1].toFixed(2)}  ×${mag}`, lx + 6, ly + L + 13);
+  }
+
+  // ---------- solvers ----------
+  applyF(c, fNew) { const s = fNew / Math.sqrt(c.fx * c.fy); const asp = c.fy / c.fx; this.C.rescaleDist(c, s); c.fx = fNew / Math.sqrt(asp); c.fy = fNew * Math.sqrt(asp); }
+  solveLens = () => {
+    const r = this.C.solveLens(this.polys.map(p => p.pts), this.cam, this.state.lensModel); this.res.lens = r;
+    if (r.ok) { this.pushUndo(); const c = this.C.cloneCam(this.cam); c.k1 = 0; c.k2 = 0; c.k3 = 0; Object.assign(c, r.vals); this.cam = c; this.camSrc = 'lens'; this.uc = null; }
+    this.bump();
+  };
+  resetDist = () => { this.pushUndo(); const c = this.C.cloneCam(this.cam); c.k1 = c.k2 = c.k3 = c.p1 = c.p2 = 0; this.cam = c; this.res.lens = null; this.uc = null; this.bump(); };
+  solveVP = (keepRot) => {
+    const segs = { x: [], y: [], z: [] }; this.lines.forEach(l => segs[l.axis].push([l.a, l.b]));
+    const r = this.C.solveVP(segs, this.cam, { ppMode: this.state.ppMode, axisRot: this.axisRot }); this.res.vp = r;
+    const c0 = this.cam; if (r.ok && !c0.k1 && !c0.k2 && !c0.k3 && !c0.p1 && !c0.p2) r.warn.unshift('Lens distortion is zero. Real lenses bend lines and bias f (often by 5–10%) — solve Lens first unless the image is already rectified.');
+    if (r.ok) {
+      this.pushUndo(); const C = this.C, c = C.cloneCam(this.cam), Cc = C.camCenter(this.cam);
+      this.applyF(c, r.f); c.cx = r.cx; c.cy = r.cy; c.R = r.R;
+      c.t = c.hasPose ? C.mv(r.R, Cc).map(v => -v) : [0, 0, 10]; c.hasPose = true; this.cam = c; this.camSrc = 'vanishing pts'; this.uc = null;
+    }
+    this.bump();
+  };
+  rotateAxes = () => { this.axisRot = (this.axisRot + 1) % 4; if (this.res.vp && this.res.vp.ok) this.solveVP(); else { const c = this.C.cloneCam(this.cam), Cc = this.C.camCenter(c); c.R = this.C.mm(c.R, this.C.eulerToRot(0, 0, 90)); c.t = this.C.mv(c.R, Cc).map(v => -v); this.pushUndo(); this.cam = c; this.bump(); } };
+  activePts() { return this.points.filter(p => p.on && p.world); }
+  solvePoints = () => {
+    const s = this.state, r = this.C.calibratePoints(this.activePts().map(p => ({ img: p.img, world: p.world })), this.cam, { estF: s.estF, fixAspect: s.fixAspect, estPP: s.estPP, distModel: s.distModel, initCur: s.initCur });
+    this.res.pts = r; if (r.ok) { this.pushUndo(); this.cam = r.cam; this.camSrc = 'points · LM'; this.uc = null; } this.bump();
+  };
+  solveH = () => {
+    const all = this.activePts(), P = all.filter(p => Math.abs(p.world[2]) < 1e-9), ex = all.length - P.length;
+    if (P.length < 4) { this.res.h = { ok: false, msg: `Need ≥ 4 points on the Z = 0 plane (have ${P.length}${ex ? `; ${ex} off-plane points excluded` : ''}).` }; this.bump(); return; }
+    const r = this.C.homography(P.map(p => [p.world[0], p.world[1]]), P.map(p => this.C.undistortPixel(this.cam, p.img[0], p.img[1])));
+    if (r.ok) { r.Hi = this.C.inv(r.H); r.excluded = ex; r.n = P.length; } this.res.h = r; this.bump();
+  };
+  setWorld(id, k, val) { const p = this.points.find(q => q.id === id); if (!p) return; p.ws[k] = val; const X = p.ws[0].trim(), Y = p.ws[1].trim(), Z = p.ws[2].trim(); const n = [X, Y, Z === '' ? '0' : Z].map(Number); p.world = X !== '' && Y !== '' && n.every(isFinite) ? n : null; this.bump(); }
+  resetCam = () => { if (!this.src) return; this.pushUndo(); this.cam = this.C.defaultCam(this.src.w, this.src.h); this.camSrc = 'default'; this.res = {}; this.uc = null; this.bump(); };
+
+  // ---------- sliders ----------
+  setParam(k, v) {
+    if (!isFinite(v)) return; const C = this.C, c = C.cloneCam(this.cam), Cc = C.camCenter(c), e = C.rotToEuler(c.R);
+    if (k === 'f') this.applyF(c, v); else if (k === 'cx' || k === 'cy' || k === 'k1' || k === 'k2') c[k] = v;
+    else if (k === 'ra' || k === 'rb' || k === 'rc') { const i = { ra: 0, rb: 1, rc: 2 }[k]; e[i] = v; c.R = C.eulerToRot(e[0], e[1], e[2]); c.t = C.mv(c.R, Cc).map(x => -x); }
+    else { const i = { Cx: 0, Cy: 1, Cz: 2 }[k]; Cc[i] = v; c.t = C.mv(c.R, Cc).map(x => -x); }
+    c.hasPose = true; this.cam = c; this.camSrc = 'manual'; this.uc = null; this.bump();
+  }
+  slidersList() {
+    const c = this.cam, C = this.C, e = C.rotToEuler(c.R), Cc = C.camCenter(c), W = c.w, H = c.h, F = Math.sqrt(c.fx * c.fy), cr = Math.max(20, 2 * Math.max(...Cc.map(Math.abs)));
+    const defs = [['f', 'f', F, 0.15 * Math.max(W, H), 5 * Math.max(W, H), 0.1, 2], ['cx', 'cx', c.cx, 0, W - 1, 0.1, 2], ['cy', 'cy', c.cy, 0, H - 1, 0.1, 2], ['k1', 'k1', c.k1, -1, 1, 0.0005, 5], ['k2', 'k2', c.k2, -1, 1, 0.0005, 5], ['ra', 'α °', e[0], -180, 180, 0.01, 3], ['rb', 'β °', e[1], -90, 90, 0.01, 3], ['rc', 'γ °', e[2], -180, 180, 0.01, 3], ['Cx', 'C.x', Cc[0], -cr, cr, 0.001, 4], ['Cy', 'C.y', Cc[1], -cr, cr, 0.001, 4], ['Cz', 'C.z', Cc[2], -cr, cr, 0.001, 4]];
+    return defs.map(([k, label, val, min, max, step, d]) => ({
+      label, min, max, step, val,
+      text: this.edits[k] !== undefined ? this.edits[k] : fmt(val, d),
+      onInput: ev => this.setParam(k, +ev.target.value),
+      onText: ev => { this.edits[k] = ev.target.value; this.bump(); },
+      onBlur: () => { if (this.edits[k] !== undefined) { const v = parseFloat(this.edits[k]); delete this.edits[k]; if (isFinite(v)) this.setParam(k, v); else this.bump(); } },
+      onKey: ev => { if (ev.key === 'Enter') ev.target.blur(); },
+    }));
+  }
+
+  // ---------- export ----------
+  buildJson() {
+    const c = this.cam, C = this.C, P = this.activePts(), errs = c.hasPose ? P.map(p => { const q = C.project(c, p.world); return q ? Math.hypot(q[0] - p.img[0], q[1] - p.img[1]) : null; }) : [];
+    const ok = errs.filter(e => e !== null), rms = ok.length ? Math.sqrt(ok.reduce((s, e) => s + e * e, 0) / ok.length) : null;
+    return {
+      format: 'manual-camera-calibration/1', created: new Date().toISOString(), source: this.src ? this.src.name : null,
+      image_size: [c.w, c.h], pixel_convention: 'OpenCV: pixel centres at integer coordinates, (0,0) = centre of top-left pixel',
+      camera_matrix: [[c.fx, 0, c.cx], [0, c.fy, c.cy], [0, 0, 1]], dist_coeffs: [c.k1, c.k2, c.p1, c.p2, c.k3], distortion_model: 'opencv radial-tangential (k1,k2,p1,p2,k3)',
+      pose_valid: !!c.hasPose, rvec: C.rotToRvec(c.R), R: c.R, tvec: c.t, camera_center_world: C.camCenter(c),
+      reprojection_rms_px: rms, rms_definition: 'sqrt(mean(du^2 + dv^2)) over enabled points (OpenCV convention)', n_points: ok.length, last_estimate: this.camSrc,
+      std: this.res.pts && this.res.pts.ok ? this.res.pts.std : null,
+      homography_plane_to_undistorted_px: this.res.h && this.res.h.ok ? this.res.h.H : null,
+      observations: { points: this.points.map(p => ({ img: p.img, world: p.world, enabled: p.on })), vp_lines: this.lines.map(l => ({ axis: l.axis, a: l.a, b: l.b })), plumb_lines: this.polys.map(p => p.pts) },
+    };
+  }
+  exportJson = () => { if (!this.cam) return; const b = new Blob([JSON.stringify(this.buildJson(), null, 2)], { type: 'application/json' }), a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = 'calibration.json'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000); };
+  copyJson = () => { if (!this.cam) return; const t = JSON.stringify(this.buildJson(), null, 2); const done = () => { this.setState({ copied: true }); setTimeout(() => this.setState({ copied: false }), 1500); }; const fb = () => { const ta = document.createElement('textarea'); ta.value = t; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); done(); } catch (e) { } ta.remove(); }; if (navigator.clipboard) navigator.clipboard.writeText(t).then(done, fb); else fb(); };
+  importJson(t) {
+    try {
+      const o = JSON.parse(t), K = o.camera_matrix, d = o.dist_coeffs || [0, 0, 0, 0, 0], [w, h] = o.image_size || [this.src ? this.src.w : 1280, this.src ? this.src.h : 720];
+      if (this.src && (this.src.w !== w || this.src.h !== h)) this.toast(`JSON is for ${w}×${h}; current image is ${this.src.w}×${this.src.h}. Loaded anyway.`);
+      const c = { w, h, fx: K[0][0], fy: K[1][1], cx: K[0][2], cy: K[1][2], k1: d[0] || 0, k2: d[1] || 0, p1: d[2] || 0, p2: d[3] || 0, k3: d[4] || 0, R: o.R || this.C.rodrigues(o.rvec || [0, 0, 0]), t: o.tvec || [0, 0, 10], hasPose: !!o.pose_valid };
+      this.pushUndo(); this.cam = c; this.camSrc = 'imported';
+      const ob = o.observations; if (ob && (!this.src || (this.src.w === w && this.src.h === h))) { this.points = (ob.points || []).map(p => ({ id: this.nid++, img: p.img, world: p.world, ws: p.world ? p.world.map(String) : ['', '', ''], on: p.enabled !== false })); this.lines = (ob.vp_lines || []).map(l => ({ id: this.nid++, axis: l.axis, a: l.a, b: l.b })); this.polys = (ob.plumb_lines || []).map(p => ({ id: this.nid++, pts: p })); }
+      this.uc = null; this.bump();
+    } catch (e) { this.toast('Could not read calibration JSON: ' + e.message); }
+  }
+
+  // ---------- render values ----------
+  setTool(t) { if (t !== 'lens') this.finishPoly(); this.pending = null; this.setState({ tool: t }); this.reqDraw(); }
+  setLayout(l) { this.setState({ layout: l }); try { const u = JSON.parse(localStorage.getItem('calib.ui.v1') || '{}'); u.layout = l; localStorage.setItem('calib.ui.v1', JSON.stringify(u)); } catch (e) { } }
+  seg(list, cur, key, mono) { return list.map(([v, label]) => ({ label, bg: cur === v ? '#343b43' : 'transparent', fg: cur === v ? '#ffffff' : '#9aa2ab', onClick: () => { this.setState({ [key]: v }); this.reqDraw(); } })); }
+
+  renderVals() {
+    const s = this.state, C = this.C, cam = this.cam, has = !!this.src && !!cam, A = s.layout === 'A';
+    const done = { source: has, lens: !!(this.res.lens && this.res.lens.ok), vp: !!(this.res.vp && this.res.vp.ok), points: !!(this.res.pts && this.res.pts.ok), plane: !!(this.res.h && this.res.h.ok), overlay: !!(cam && cam.hasPose) };
+    const tools = TOOLS.map(([k, label, sub], i) => { const act = s.tool === k; return { label, sub, mark: done[k] && !act ? '✓' : String(i + 1), onClick: () => this.setTool(k), bg: act ? '#22272c' : 'transparent', fg: act ? '#ffffff' : '#b8bfc6', bar: act ? ACC : 'transparent', dotBg: act ? ACC : done[k] ? '#23362a' : '#22272c', dotFg: act ? '#1b1408' : done[k] ? '#7fdc9b' : '#8a929b' }; });
+    const stepIdx = TOOLS.findIndex(t => t[0] === s.tool);
+    const tg = (label, on, fn) => ({ label, onClick: fn, bg: on ? '#2b3138' : 'rgba(18,20,23,0.85)', fg: on ? '#ffffff' : '#9aa2ab', bd: on ? '#46505a' : '#2a2f35' });
+    const toggles = [
+      tg(s.view === 'undist' ? 'View: undistorted' : 'View: raw', s.view === 'undist', () => { this.setState({ view: s.view === 'undist' ? 'raw' : 'undist' }); this.reqDraw(); }),
+      tg('Grid overlay', s.overlay, () => { this.setState({ overlay: !s.overlay }); this.reqDraw(); }),
+      tg('Residuals ×10', s.resid, () => { this.setState({ resid: !s.resid }); this.reqDraw(); }),
+      tg('Loupe', s.loupe, () => { this.setState({ loupe: !s.loupe }); this.reqDraw(); }),
+      tg('Fit', false, this.fit),
+    ];
+    const v = { layoutA: A, layoutB: !A, layABg: A ? '#343b43' : 'transparent', layAFg: A ? '#fff' : '#9aa2ab', layBBg: !A ? '#343b43' : 'transparent', layBFg: !A ? '#fff' : '#9aa2ab', setLayA: () => this.setLayout('A'), setLayB: () => this.setLayout('B'),
+      tools, toggles, canvasRef: this.canvasRef, wrapRef: this.wrapRef, fileRef: this.fileRef, videoRef: this.videoRef, cursorRef: this.cursorRef,
+      hasImage: has, noImage: !has && !s.busy, openFile: this.openFile, onFile: this.onFile, startWebcam: this.startWebcam, loadSynthetic: this.loadSynthetic,
+      isVideo: s.srcKind === 'video', vdur: s.vdur, vt: s.vt, onScrub: this.onScrub, frameBack: this.frameBack, frameFwd: this.frameFwd, videoTimeStr: `${fmt(s.vt, 3)} / ${fmt(s.vdur, 2)} s`,
+      isWebcam: s.srcKind === 'webcam', isLive: s.live, isFrozen: s.srcKind === 'webcam' && !s.live, captureFrame: this.captureFrame, resumeLive: this.resumeLive,
+      busy: !!s.busy, busyText: s.busy, hasToast: !!s.toast, toast: s.toast,
+      tSource: s.tool === 'source', tLens: s.tool === 'lens', tVP: s.tool === 'vp', tPoints: s.tool === 'points', tPlane: s.tool === 'plane', tOverlay: s.tool === 'overlay',
+      stepNum: stepIdx + 1, prevStep: () => this.setTool(TOOLS[Math.max(0, stepIdx - 1)][0]), nextStep: () => stepIdx < 5 ? this.setTool(TOOLS[stepIdx + 1][0]) : this.exportJson(), nextLabel: stepIdx < 5 ? 'Next: ' + TOOLS[stepIdx + 1][1] + ' →' : 'Export calibration JSON',
+      camCount: (s.camList || []).length, hasCams: (s.camList || []).length > 0, camQuery: s.camQuery || '', onCamQuery: e => this.setState({ camQuery: e.target.value }),
+      camRows: (() => { const q = (s.camQuery || '').toLowerCase().trim(), L = (s.camList || []).filter(c => !q || c.name.toLowerCase().includes(q) || c.id.toLowerCase().includes(q)); return L.slice(0, 80).map(c => ({ name: c.name, loc: isFinite(c.lat) && isFinite(c.lon) ? `${c.lat.toFixed(3)}, ${c.lon.toFixed(3)}` : '', host: c.url.replace(/^https?:\/\//, '').split('/')[0], bg: s.camSel === c.id ? '#22303a' : 'transparent', onClick: () => this.loadUrl(c) })); })(),
+      camMore: (() => { const q = (s.camQuery || '').toLowerCase().trim(), n = (s.camList || []).filter(c => !q || c.name.toLowerCase().includes(q) || c.id.toLowerCase().includes(q)).length; return n > 80 ? `showing 80 of ${n} — refine search` : `${n} match${n === 1 ? '' : 'es'}`; })(),
+      urlInput: s.urlInput || '', onUrlInput: e => this.setState({ urlInput: e.target.value }), onUrlKey: e => { if (e.key === 'Enter') this.loadSingleUrl(); }, loadSingleUrl: this.loadSingleUrl,
+      hasRecent: (s.recent || []).length > 0, recentRows: (s.recent || []).map(r => ({ label: r.replace(/^https?:\/\//, ''), onClick: () => { this.setState({ urlInput: r }, this.loadSingleUrl); } })),
+      importCams: this.importCams, toggleProxy: this.toggleProxy, proxyTpl: s.proxyTpl || '', setProxyTpl: this.setProxyTpl, proxyOn: !s.noProxy, proxyBg: s.noProxy ? 'transparent' : ACC, isUrl: s.srcKind === 'url', refreshCam: () => this.webcam && this.loadUrl(this.webcam, true),
+      srcName: this.src ? this.src.name : '', srcSize: this.src ? `${this.src.w} × ${this.src.h} px` : '',
+      toggleSnap: () => this.setState({ snap: !s.snap }), snapBg: s.snap ? ACC : 'transparent',
+      exportJson: this.exportJson, copyJson: this.copyJson, copyLabel: s.copied ? 'Copied ✓' : 'Copy JSON', resetCam: this.resetCam,
+      zoomText: has ? `zoom ${Math.round(this.vw.z * 100)}%` : '',
+      hint: { source: has ? 'Frame loaded · pick a tool on the left (or Next)' : 'Load a frame to begin.', lens: 'Click along a straight edge · ⏎ / double-click to finish · drag handles to adjust', vp: this.pending ? 'Click the second endpoint · Esc cancels' : `Drag along an edge parallel to ${s.axis.toUpperCase()} · or click both ends`, points: 'Click a feature with known world coordinates · arrows nudge 0.1 px (shift: 1 px)', plane: 'Hover to read plane coordinates through H⁻¹', overlay: 'Drag to pan · sliders adjust the camera' }[s.tool],
+    };
+    // lens
+    const lr = this.res.lens;
+    v.lensModels = this.seg([['k1', 'k1'], ['k1k2', 'k1 k2'], ['k1k2k3', 'k1 k2 k3']], s.lensModel, 'lensModel');
+    v.lensRows = this.polys.map((p, i) => { const d = has ? C.polyStraightness(p.pts, cam) : NaN; return { label: `line ${i + 1} · ${p.pts.length} pts${p.id === this.activePoly ? ' · drawing' : ''}`, dev: isFinite(d) ? d.toFixed(3) + ' px' : '—', devColor: d < 0.5 ? 'oklch(0.8 0.15 150)' : d < 1.5 ? '#d9dde1' : ACC, bg: this.sel && this.sel.kind === 'poly' && this.sel.id === p.id ? '#20262c' : 'transparent', onSel: () => { this.sel = { kind: 'poly', id: p.id, i: 0 }; this.bump(); }, onDel: ev => { ev.stopPropagation(); this.pushUndo(); this.polys = this.polys.filter(q => q !== p); if (this.activePoly === p.id) this.activePoly = null; this.bump(); } }; });
+    v.lensEmpty = !this.polys.length; v.hasActivePoly = !!this.activePoly; v.finishPoly = this.finishPoly; v.solveLens = this.solveLens; v.resetDist = this.resetDist;
+    v.lensErr = !!(lr && !lr.ok); v.lensErrMsg = lr && lr.msg; v.lensHas = !!(lr && lr.ok);
+    v.lensBefore = lr && lr.ok ? lr.before.toFixed(3) : ''; v.lensAfter = lr && lr.ok ? lr.after.toFixed(3) : '';
+    v.lensCoefs = lr && lr.ok ? lr.names.map(n => ({ name: n, val: sfmt(lr.vals[n]), sd: sfmt(lr.std[n]) })) : []; v.lensWarn = lr && lr.ok ? lr.warn.map(t => ({ t })) : [];
+    // vp
+    const vr = this.res.vp, cnt = { x: 0, y: 0, z: 0 }; this.lines.forEach(l => cnt[l.axis]++);
+    v.axes = ['x', 'y', 'z'].map(k => ({ label: k.toUpperCase() + ' axis', color: AXC[k], count: cnt[k] + (cnt[k] === 1 ? ' line' : ' lines'), bg: s.axis === k ? '#22272c' : '#1a1d21', bd: s.axis === k ? AXC[k] : '#2a2f35', onClick: () => this.setState({ axis: k }) }));
+    v.ppModes = this.seg([['center', 'Image centre'], ['current', 'Keep current'], ['ortho', 'From 3 VPs']], s.ppMode, 'ppMode');
+    v.vpRows = this.lines.map((l, i) => { const V = vr && vr.ok && vr.vps[l.axis], idx = this.lines.filter(q => q.axis === l.axis).indexOf(l); const ang = V && V.ang[idx]; return { label: `${l.axis.toUpperCase()}${idx + 1} · ${Math.hypot(l.b[0] - l.a[0], l.b[1] - l.a[1]).toFixed(0)} px${l.fit ? ' · fit' : ''}`, info: isFinite(ang) ? ang.toFixed(3) + '°' : '', color: AXC[l.axis], bg: this.sel && this.sel.kind === 'line' && this.sel.id === l.id ? '#20262c' : 'transparent', onSel: () => { this.sel = { kind: 'line', id: l.id, i: 0 }; this.bump(); }, onDel: ev => { ev.stopPropagation(); this.pushUndo(); this.lines = this.lines.filter(q => q !== l); this.bump(); } }; });
+    v.vpEmpty = !this.lines.length; v.solveVP = () => this.solveVP(); v.rotateAxes = this.rotateAxes;
+    v.vpErr = !!(vr && !vr.ok); v.vpErrMsg = vr && vr.msg; v.vpHas = !!(vr && vr.ok);
+    v.vpRes = vr && vr.ok ? vr.axes.map(k => { const V = vr.vps[k]; return { axis: k.toUpperCase(), color: AXC[k], pos: V.finite ? `(${fmt(V.pix[0], 1)}, ${fmt(V.pix[1], 1)})` : '∞', rms: fmt(V.rmsPx, 3) + ' px' }; }) : [];
+    v.vpF = vr && vr.ok ? fmt(vr.f, 2) + ' px' : ''; v.vpFsd = vr && vr.ok ? fmt(vr.std.f, 2) : ''; v.vpC = vr && vr.ok ? `(${fmt(vr.cx, 2)}, ${fmt(vr.cy, 2)})${s.ppMode === 'ortho' ? ` ± (${fmt(vr.std.cx, 1)}, ${fmt(vr.std.cy, 1)})` : ' fixed'}` : '';
+    v.vpSigma = vr && vr.ok ? vr.sigma.toFixed(2) : ''; v.vpWarn = vr && vr.ok ? vr.warn.map(t => ({ t })) : [];
+    // points
+    const pr = this.res.pts;
+    v.ptRows = this.points.map((p, i) => { let e = null; if (has && cam.hasPose && p.world) { const q = C.project(cam, p.world); e = q ? Math.hypot(q[0] - p.img[0], q[1] - p.img[1]) : Infinity; } const sel = this.sel && this.sel.kind === 'pt' && this.sel.id === p.id;
+      return { label: String(i + 1), uv: `${p.img[0].toFixed(2)}, ${p.img[1].toFixed(2)}`, X: p.ws[0], Y: p.ws[1], Z: p.ws[2], err: e === null ? '' : isFinite(e) ? e.toFixed(2) : 'behind', errColor: e === null ? '#6d757e' : e < 0.5 ? 'oklch(0.8 0.15 150)' : e < 2 ? '#d9dde1' : ACC, bg: sel ? '#20262c' : 'transparent', op: p.on ? 1 : 0.45,
+        onX: ev => this.setWorld(p.id, 0, ev.target.value), onY: ev => this.setWorld(p.id, 1, ev.target.value), onZ: ev => this.setWorld(p.id, 2, ev.target.value),
+        onSel: () => { this.sel = { kind: 'pt', id: p.id }; this.reqDraw(); this.bump(); }, onToggle: ev => { ev.stopPropagation(); p.on = !p.on; this.bump(); }, onDel: ev => { ev.stopPropagation(); this.pushUndo(); this.points = this.points.filter(q => q !== p); this.bump(); } }; });
+    v.ptEmpty = !this.points.length;
+    v.optF = [['est', 'Est. fx=fy'], ['estxy', 'Est. fx, fy'], ['fix', 'Fixed']].map(([k, label]) => { const cur = !s.estF ? 'fix' : s.fixAspect ? 'est' : 'estxy'; return { label, bg: cur === k ? '#343b43' : 'transparent', fg: cur === k ? '#fff' : '#9aa2ab', onClick: () => this.setState({ estF: k !== 'fix', fixAspect: k !== 'estxy' }) }; });
+    v.optPP = [[false, 'Fixed'], [true, 'Estimate']].map(([k, label]) => ({ label, bg: s.estPP === k ? '#343b43' : 'transparent', fg: s.estPP === k ? '#fff' : '#9aa2ab', onClick: () => this.setState({ estPP: k }) }));
+    v.optDist = this.seg([['keep', 'keep'], ['k1', 'k1'], ['k1k2', 'k1k2'], ['k1k2p', '+p1p2'], ['all', 'all 5']], s.distModel, 'distModel');
+    v.optInit = [[false, 'Linear solution'], [true, 'Current camera']].map(([k, label]) => ({ label, bg: s.initCur === k ? '#343b43' : 'transparent', fg: s.initCur === k ? '#fff' : '#9aa2ab', onClick: () => this.setState({ initCur: k }) }));
+    const ap = this.activePts(), np = (s.estF ? (s.fixAspect ? 1 : 2) : 0) + (s.estPP ? 2 : 0) + (C ? C.DIST_MODELS[s.distModel].length : 0) + 6;
+    let planarTxt = ''; if (ap.length >= 3 && C) { const pf = C.planeFit(ap.map(p => p.world)); planarTxt = pf.collinear ? ' · collinear' : pf.ratio < 0.02 ? ' · coplanar' : ' · 3D'; }
+    v.ptSummary = `${ap.length} usable pts${planarTxt} · ${2 * ap.length} residuals / ${np} params${2 * ap.length > np ? '' : ' — underdetermined'}`;
+    v.solvePoints = this.solvePoints; v.ptErr = !!(pr && !pr.ok); v.ptErrMsg = pr && pr.msg; v.ptHas = !!(pr && pr.ok);
+    v.ptRms = pr && pr.ok ? pr.rms.toFixed(4) : ''; v.ptMax = pr && pr.ok ? pr.maxErr.toFixed(3) : '';
+    v.ptStd = pr && pr.ok ? Object.keys(pr.std).map(k => ({ name: k === 'rot_deg' ? 'rotation' : k === 't' ? '|t|' : k, sd: k === 'rot_deg' ? sfmt(pr.std[k]) + '°' : /^(f|fx|fy|cx|cy)$/.test(k) ? sfmt(pr.std[k]) + ' px' : sfmt(pr.std[k]) })) : [];
+    v.ptLog = pr && pr.ok ? pr.log.concat([`${pr.iters} LM iterations · ${pr.dof} DOF`]).map(t => ({ t })) : []; v.ptWarn = pr && pr.ok ? pr.warn.map(t => ({ t })) : [];
+    // plane
+    const hr = this.res.h, onP = ap.filter(p => Math.abs(p.world[2]) < 1e-9).length, offP = ap.length - onP; v.hSummary = `${onP} pts on Z = 0 · ${Math.max(0, 2 * onP - 8)} DOF${offP ? ` · ${offP} off-plane excluded` : ''}`; v.solveH = this.solveH;
+    v.hErr = !!(hr && !hr.ok); v.hErrMsg = hr && hr.msg; v.hHas = !!(hr && hr.ok); v.hRms = hr && hr.ok ? hr.rms.toFixed(4) : '';
+    v.hCells = hr && hr.ok ? hr.H.flat().map(x => ({ v: sfmt(x) })) : [];
+    // overlay
+    v.sliders = has ? this.slidersList() : [];
+    v.gridLess = () => this.setState({ gridN: Math.max(1, s.gridN - 1) }, this.reqDraw); v.gridMore = () => this.setState({ gridN: s.gridN + 1 }, this.reqDraw);
+    v.toggleBox = () => this.setState({ box: !s.box }, this.reqDraw); v.boxBg = s.box ? '#343b43' : '#1f2327';
+    v.gridInfo = `grid ${s.gridN}×${s.gridN} @ ${s.gridStep} unit`;
+    if (has && cam.hasPose && ap.length) { const e = ap.map(p => { const q = C.project(cam, p.world); return q ? (q[0] - p.img[0]) ** 2 + (q[1] - p.img[1]) ** 2 : NaN; }); v.liveRms = e.every(isFinite) ? Math.sqrt(e.reduce((a, b) => a + b, 0) / e.length).toFixed(3) + ' px' : '—'; } else v.liveRms = '—';
+    v.hasGT = !!this.gt && has;
+    if (v.hasGT) { const g = this.gt, gc = C.camCenter(g), cc = C.camCenter(cam), rotErr = (() => { const M = C.mm(C.T(g.R), cam.R); return Math.acos(Math.max(-1, Math.min(1, (M[0][0] + M[1][1] + M[2][2] - 1) / 2))) * 180 / Math.PI; })();
+      const row = (name, a, b, d) => { const dd = b - a; return { name, gt: fmt(a, d), cur: fmt(b, d), d: (dd >= 0 ? '+' : '') + fmt(dd, d), dc: Math.abs(dd) < Math.abs(a || 1) * 0.005 ? 'oklch(0.8 0.15 150)' : '#d9dde1' }; };
+      v.gtRows = [row('fx', g.fx, cam.fx, 2), row('fy', g.fy, cam.fy, 2), row('cx', g.cx, cam.cx, 2), row('cy', g.cy, cam.cy, 2), row('k1', g.k1, cam.k1, 4), row('k2', g.k2, cam.k2, 4), { name: 'R', gt: '—', cur: cam.hasPose ? 'geodesic' : '—', d: cam.hasPose ? rotErr.toFixed(3) + '°' : '—', dc: rotErr < 0.1 ? 'oklch(0.8 0.15 150)' : '#d9dde1' }, { name: '|ΔC|', gt: '—', cur: '', d: cam.hasPose ? fmt(Math.hypot(gc[0] - cc[0], gc[1] - cc[1], gc[2] - cc[2]), 4) : '—', dc: '#d9dde1' }];
+    } else v.gtRows = [];
+    // camera card
+    if (has) { const rv = C.rotToRvec(cam.R), Cc = C.camCenter(cam), pad = x => fmt(x, 2).padStart(9);
+      v.kText = `${pad(cam.fx)} ${pad(0)} ${pad(cam.cx)}\n${pad(0)} ${pad(cam.fy)} ${pad(cam.cy)}\n${pad(0)} ${pad(0)} ${pad(1)}`;
+      v.distText = [cam.k1, cam.k2, cam.p1, cam.p2, cam.k3].map(sfmt).join('  ');
+      v.rvecText = cam.hasPose ? rv.map(x => fmt(x, 5)).join('  ') : 'no pose yet'; v.tText = cam.hasPose ? cam.t.map(x => fmt(x, 4)).join('  ') : '—'; v.cText = cam.hasPose ? Cc.map(x => fmt(x, 4)).join('  ') : '—';
+      v.fovText = `${(2 * Math.atan(cam.w / 2 / cam.fx) * 180 / Math.PI).toFixed(2)}° × ${(2 * Math.atan(cam.h / 2 / cam.fy) * 180 / Math.PI).toFixed(2)}° (pinhole)`;
+    } else { v.kText = '—'; v.distText = '—'; v.rvecText = '—'; v.tText = '—'; v.cText = '—'; v.fovText = '—'; }
+    v.camSrc = 'last: ' + this.camSrc;
+    return v;
+  }
+}
+</script>
+</body>
+</html>
